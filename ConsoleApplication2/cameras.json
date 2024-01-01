@@ -1,0 +1,6 @@
+{
+	"camID": 29,
+	"detection-type": "person",
+	"max-allowed": 0,
+	"polygon": [ 256, 92, 425, 94, 428, 205, 497, 279, 236, 303 ]
+}
