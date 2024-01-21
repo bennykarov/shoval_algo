@@ -175,7 +175,6 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 	conf.MLType = pt.get<int>("ALGO.ML", conf.MLType);
 	conf.useGPU = pt.get<int>("ALGO.useGPU",1) ;
 
-	
 	/*
 	conf.prediction = pt.get<int>("ALGO.predict", conf.prediction);
 	conf.onlineTracker = pt.get<int>("ALGO.onlineTracker", conf.onlineTracker);
@@ -192,7 +191,6 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 
 	int depth2cvType(int depth)
 	{
-
 		switch (depth) {
 		case 1:
 			return  CV_8UC1;
@@ -296,12 +294,11 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		m_colorDepth = imgSize / (w*h);
 
 		if (1)
-			m_colorDepth = imgSize / (w * h);
-		else
-			m_colorDepth = 4; //  pixelWidth / 8;  DDEBUG CONST
+			m_colorDepth = pixelWidth; // in Byte unit / 8;
 
+			
 		setConfigDefault(m_params);
-		readConfigFile("C:\\Program Files\\Bauotech\\Dll\\Algo\\config.ini", m_params);
+		readConfigFile("C:\\Program Files\\Bauotech\\config.ini", m_params);
 		debugSaveParams(w, h, imgSize, pixelWidth, scaleDisplay, m_params);
 
 
@@ -367,13 +364,20 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		m_BGSEGoutput.clear();
 		m_motionDetectet = 0;
 
-
+#if 0  
+		//moved to upper level 
 		cv::Mat frame;
 		if (frame_.channels() == 4) {
 			cv::cvtColor(frame_, frame, cv::COLOR_BGRA2BGR);
 		}
+		else if (frame_.channels() == 2) {
+			cv::cvtColor(frame_, frame, cv::COLOR_YUV2BGR);
+		}
 		else
 			frame = frame_;
+#endif 
+		cv::Mat frame = frame_;
+
 
 		if (0)
 		{
@@ -435,15 +439,60 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		//pObjects->frameNum = m_frameNum;
 		pObjects->ObjectType = -1;
 
-		//memcpy(m_data, dataOrg, sizeTemp); // buffering NOT optimized
 		m_data = dataOrg; // No buffering - use original buffer for processing 
 
-		m_frameOrg = cv::Mat(m_height, m_width, depth2cvType(m_colorDepth), m_data);
-		if (m_frameOrg.empty()) {
+		// Convert image PTR to opencv MAT
+		cv::Mat frameRaw = cv::Mat(m_height, m_width, depth2cvType(m_colorDepth), m_data);
+		if (frameRaw.empty()) {
 			std::cout << "read() got an EMPTY frame\n";
 			ERROR_BEEP();
 			return -1;
 		}
+
+		//Convert to operational format = BGR
+		//------------------------------------
+		if (frameRaw.channels() == 4) {
+			cv::cvtColor(frameRaw, m_frameOrg, cv::COLOR_BGRA2BGR);
+		}
+		else if (frameRaw.channels() == 2) {
+			// COLOR_YUV2BGR_Y422  COLOR_YUV2BGR_UYNV  COLOR_YUV2BGR_UYVY COLOR_YUV2BGR_YUY2 COLOR_YUV2BGR_YUYV COLOR_YUV2BGR_YVYU 
+			//cv::cvtColor(frameRaw, m_frameOrg, cv::COLOR_YUV2BGR_Y422);
+			cv::Mat mYUV(m_height + m_height / 2, m_width, CV_8UC1, (void*)m_data);
+			//cv::Mat mRGB(m_height, m_width, CV_8UC3);
+			m_frameOrg = cv::Mat(m_height, m_width, CV_8UC3);
+			cvtColor(mYUV, m_frameOrg, cv::COLOR_YUV2BGR_YV12, 3);
+			int debug = 10;
+		}
+		else
+			m_frameOrg = frameRaw; // ??
+
+#if 1
+		if (0) // TEST YUV FORMATS:
+		{
+			std::vector <int> Convert_gray = { cv::COLOR_YUV2GRAY_YV12,cv::COLOR_YUV2GRAY_IYUV, cv::COLOR_YUV2GRAY_NV21, cv::COLOR_YUV2GRAY_NV12 , \
+				 cv::COLOR_YUV2GRAY_I420, cv::COLOR_YUV2GRAY_IYUV, cv::COLOR_YUV420sp2GRAY,  cv::COLOR_YUV420p2GRAY  };
+
+			cv::Mat mYUV(m_height + m_height / 2, m_width, CV_8UC1, (void*)m_data);
+			//cv::Mat mRGB(m_height, m_width, CV_8UC3);
+			cv::Mat mGray(m_height, m_width, CV_8UC1);
+			for (auto conv : Convert_gray) {
+				cvtColor(mYUV, mGray, conv, 1);
+				int debug = 10;
+			}
+
+
+
+			std::vector <int> Convert_color = { cv::COLOR_YUV2BGR_NV12,  cv::COLOR_YUV2BGR_NV21, cv::COLOR_YUV2BGR_YV12,  cv::COLOR_YUV2BGR_IYUV };
+
+			cv::Mat mBGR(m_height, m_width, CV_8UC3);
+			for (auto conv : Convert_color) {
+				cvtColor(mYUV, mBGR, conv, 3);
+				int debug = 10;
+			}
+		}
+
+#endif 
+
 
 		m_frameROI = m_frameOrg(m_camROI);
 
@@ -458,7 +507,8 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		pObjects->reserved2_motion = objects_tracked; //  m_motionDetectet ? 1 : 0;
 		*/
 
-		if (m_decipher.getPersonObjects(m_frameNum).size() > 0) {
+		//if (m_decipher.getPersonObjects(m_frameNum).size() > 0) {
+		if (m_decipher.getObjects(m_frameNum).size() > 0) {
 			sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale);
 
 			if (sirenObjs.size() > 0) {
@@ -704,3 +754,65 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		return m_decipher.getPersonObjects(m_frameNum).size(); // not optimized !!!
 	}
 
+
+
+#if 0
+	class CYUV_Converter {
+	public:
+
+		int  main__(int argc, char** argv)
+		{
+			int width;
+			int height;
+			FILE* fin = NULL;
+			struct YUV_Capture cap;
+			enum YUV_ReturnValue ret;
+			IplImage* bgr;
+			if (argc != 4)
+			{
+				fprintf(stderr, "usage: %s file.yuv width height\n", argv[0]);
+				return 1;
+			}
+			width = atoi(argv[2]);
+			height = atoi(argv[3]);
+			if (width <= 0 || height <= 0)
+			{
+				fprintf(stderr, "error: bad frame dimensions: %d x %d\n", width, height);
+				return 1;
+			}
+			fin = fopen(argv[1], "rb");
+			if (!fin)
+			{
+				fprintf(stderr, "error: unable to open file: %s\n", argv[1]);
+				return 1;
+			}
+			ret = YUV_init(fin, width, height, &cap);
+			assert(ret == YUV_OK);
+
+			bgr = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, 3);
+			assert(bgr);
+
+			for (; ;)
+			{
+				ret = YUV_read(&cap);
+				if (ret == YUV_EOF)
+				{
+					cvWaitKey(0);
+					break;
+				}
+				else if (ret == YUV_IO_ERROR)
+				{
+					fprintf(stderr, "I/O error\n");
+					break;
+				}
+				cvCvtColor(cap.ycrcb, bgr, CV_YCrCb2BGR);
+				cvShowImage(argv[1], bgr);
+				cvWaitKey(35);
+			}
+
+			return 0;
+		}
+
+
+	};
+#endif 

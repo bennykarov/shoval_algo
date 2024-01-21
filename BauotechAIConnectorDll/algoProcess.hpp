@@ -12,7 +12,7 @@
   ===========================================================================================*/
 class algoProcess {
 public:
-	bool init(int video_index, int width, int height, int pixelWidth);	
+	bool init(int video_index, int width, int height, int image_size, int pixelWidth);
 	bool terminate();
 	void setCallback(CameraAICallback callback);
 	void setDrawFlag(int youDraw) { m_youDraw = youDraw; }

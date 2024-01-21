@@ -147,10 +147,15 @@ std::vector <CObject> CDecipher::getObjects_(int frameNum)
 }
 #endif 
 
-
+/*---------------------------------------------------------------------------
+* RETUN specific label objects OR ALL TYPES if label == none
+---------------------------------------------------------------------------*/
 std::vector <CObject> CDecipher::getObjects(int frameNum, Labels  label)
 {
 	std::vector <CObject> personObjects;
+
+	if (label == Labels::nonLabled)
+		return m_detectedObjects;
 
 	std::copy_if(m_detectedObjects.begin(), m_detectedObjects.end(), std::back_inserter(personObjects),
 		[label](CObject obj) { return obj.m_label == label; });

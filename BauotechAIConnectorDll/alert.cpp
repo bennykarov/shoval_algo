@@ -36,7 +36,7 @@ int CAlert::Siren(std::vector <CObject> objects)
 
 
 	for (auto obj : objects) {
-		if (obj.m_label == m_label && cv::pointPolygonTest(m_polyPoints, obj.center(), false) > 0)
+		if (m_label == obj.m_label && cv::pointPolygonTest(m_polyPoints, obj.center(), false) > 0)
 			hits++;
 	}
 
@@ -65,9 +65,15 @@ std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
 }
 
 
+/*------------------------------------------------------------------------------------------------------------
+* Set alert params : 
+    * ROI = polygon
+    * label type 
+    * max allowed
+------------------------------------------------------------------------------------------------------------*/
 void CAlert::set(std::vector<cv::Point > polyPoints, int label, int max_allowed)
 {
-    m_label = label;
+    m_label = label; 
     m_maxAllowed = max_allowed;
     m_polyPoints = polyPoints;
 
@@ -147,7 +153,7 @@ int readCamerasJson(std::string fname, std::vector <CAlert>& cameras)
         if (doc.HasMember("detection-type") && doc["detection-type"].IsString()) {
             std::string typeStr = doc["detection-type"].GetString();
 
-            int label = 0;// DDEBUG - must convert str to LABEL !!!!!
+            int label = getYoloClassIndex(typeStr);
 
             cameras.back().m_label = label;
             std::cout << "label: " << label << std::endl;

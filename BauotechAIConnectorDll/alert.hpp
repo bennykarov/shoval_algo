@@ -1,5 +1,5 @@
-#ifndef CAMERA_HPP
-#define CAMERA_HPP
+#ifndef ALERT_HPP
+#define ALERT_HPP
 #pragma once
 
 #include <vector>
@@ -22,7 +22,7 @@ public:
 	int m_camID;
 	std::vector<cv::Point > m_polyPoints;
 	//std::tuple <int,int> label_allowed;
-	int m_label = -1;
+	int m_label;
 	int m_maxAllowed = -1;
 	cv::Rect  m_bbox;
 

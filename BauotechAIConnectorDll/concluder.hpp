@@ -25,7 +25,7 @@ public:
 	void add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum);
 	void add(std::vector <YDetection> YoloOutput,int frameNum);
 	int track();
-	std::vector <CObject> getObjects(int frameNum, Labels label); //  { return m_goodObjects; }
+	std::vector <CObject> getObjects(int frameNum, Labels label = Labels::nonLabled); //  { return m_goodObjects; }
 	std::vector <CObject> getPersonObjects(int frameNum); //  { return m_goodObjects; }
 	std::vector <CObject> getVehicleObjects(int frameNum, bool only_moving); //  Other labeled objects (not a persons) & BGSeg 
 	std::vector <CObject> getOtherObjects(int frameNum, bool only_moving); //  Other labeled objects (not a persons) & BGSeg 

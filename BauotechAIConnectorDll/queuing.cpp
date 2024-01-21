@@ -47,7 +47,7 @@
             return false; // queue is full
         }
 
-        memcpy(m_buffers[pushPtr].ptr, frame.ptr, bufferSize());
+        memcpy(m_buffers[pushPtr].ptr, frame.ptr, bufferSize_());
         m_buffers[pushPtr].frameNum = frame.frameNum;
 
         if (popPtr < 0)

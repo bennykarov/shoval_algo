@@ -17,7 +17,7 @@
 /*===========================================================================================
 * AlgoProcess (thread) class
   ===========================================================================================*/
-	bool algoProcess::init(int video_index, int width, int height, int pixelWidth) 
+	bool algoProcess::init(int video_index, int width, int height, int image_size, int pixelWidth)
 	{
 		//gAICllbacks[videoIndex](videoIndex, aidata, 1, nullptr, 0);
 		m_videoIndex = video_index;
@@ -26,7 +26,10 @@
 		m_pixelWidth = pixelWidth;
 		m_scale = 0.5;
 
-		bool ok = m_tracker.init(m_width, m_height, imageSize(), m_pixelWidth, m_scale/*0.5*/);
+
+		int badImageSize = imageSize();
+
+		bool ok = m_tracker.init(m_width, m_height, image_size, m_pixelWidth, m_scale/*0.5*/);
 		return ok;
 	}
 
@@ -37,7 +40,7 @@
 
 	int algoProcess::imageSize()
 	{
-		return m_width * m_height * m_pixelWidth / 8;
+		return m_width * m_height * m_pixelWidth; // / 8;
 	}
 
 	/*---------------------------------------------------------------------
@@ -88,10 +91,12 @@
 			//if (m_objectCount > 0)  gAlgoObjects[m_videoIndex] = m_Objects[0]; // only first object (for now)
 
 			// send the data to the callback
-			if (m_callback != nullptr)
+			if (m_callback != nullptr && m_objectCount > 0)
+			{
 				m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
-			else // DDEBUG DDEBUG DDEBUG DDEBUG 
-				fakeCallBack(m_videoIndex, m_Objects, m_objectCount, nullptr, 0);
+			}
+			//else // DDEBUG DDEBUG DDEBUG DDEBUG 
+				//fakeCallBack(m_videoIndex, m_Objects, m_objectCount, nullptr, 0);
 		}
 
 

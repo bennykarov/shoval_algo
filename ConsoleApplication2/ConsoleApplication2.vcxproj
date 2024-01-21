@@ -71,11 +71,11 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>C:\LIBS\opencv\opencv_4.8_\build\install\include;C:\LIBS\boost_179\boost;C:\LIBS\boost_179;$(IncludePath)</IncludePath>
+    <IncludePath>C:\LIBS\opencv\opencv_4.8_\build\install\include;C:\LIBS\boost_179\boost;C:\LIBS\boost_179;C:\LIBS\rapidJason\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);C:\LIBS\opencv\opencv_4.8_\build\install\x64\vc17\lib</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>C:\LIBS\opencv\opencv_4.8_\build\install\include;C:\LIBS\boost_179\boost;C:\LIBS\boost_179;$(IncludePath)</IncludePath>
+    <IncludePath>C:\LIBS\opencv\opencv_4.8_\build\install\include;C:\LIBS\boost_179\boost;C:\LIBS\boost_179;C:\LIBS\rapidJason\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);C:\LIBS\opencv\opencv_4.8_\build\install\x64\vc17\lib</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -136,6 +136,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ConsoleApplication2.cpp" />
+    <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\BauotechAIConnectorDll\BauotechAIConnectorDll.vcxproj">

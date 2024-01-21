@@ -124,10 +124,13 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 {
 
 	int bufSize = 10;
+
+	// if (1) pixelWidth = 4;// DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG for RGBA 
+		
 	// Init Queue 
-	g_bufQ.set(width, height, pixelWidth/8, bufSize);
+	g_bufQ.set(width, height, pixelWidth, bufSize);
 	// Init Algo thread
-	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, pixelWidth))
+	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth))
 		return -1;
 	// init callback function 
 	g_algoProcess[videoIndex].setCallback(callback);
