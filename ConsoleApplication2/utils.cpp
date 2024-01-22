@@ -21,7 +21,6 @@
 
 int readCamerasJson(std::string fname, int camID, std::vector <CAlert_>& cameras)
 {
-    //FILE* fp = fopen(fname.c_str(), "rb");
     FILE* fp;
     fopen_s(&fp, fname.c_str(), "rb");
 
@@ -51,59 +50,41 @@ int readCamerasJson(std::string fname, int camID, std::vector <CAlert_>& cameras
         fclose(fp);
         return 0;
     }
-
-    // Close the file 
     fclose(fp);
 
 
     // Parse file
+    rapidjson::Value::ConstValueIterator itr;
 
-    for (int rec = 0; rec < 1; rec++) {
-        // Get the "age" member 
-        if (doc.HasMember("camID") && doc["camID"].IsInt()) {
-            int camID = doc["camID"].GetInt();
-            cameras.push_back(CAlert_());
-            cameras.back().m_camID = camID;
-            std::cout << "camID: " << camID << std::endl;
-        }
+	try {
+		for (itr = doc.Begin(); itr != doc.End(); ++itr) {
+			CAlert_ camInfo;
+			// Access the data in the object
+			camInfo.m_camID = itr->GetObject_()["camID"].GetInt();
+			//std::cout << "camID: " << camID << std::endl;
+			std::string typeStr = itr->GetObject_()["detection-type"].GetString();
+			camInfo.m_label = 0;// DDEBUG - must convert str to LABEL !!!!!
+			camInfo.m_maxAllowed = itr->GetObject_()["max-allowed"].GetInt();
 
-        // Get the "detection-type" member 
-        if (doc.HasMember("detection-type") && doc["detection-type"].IsString()) {
-            std::string typeStr = doc["detection-type"].GetString();
+            if (itr->HasMember("polygon") && itr->GetObject_()["polygon"].IsArray()) {
+                std::vector <int> points;
+                rapidjson::Value::ConstValueIterator itrP;
+                for (itrP = itr->GetObject_()["polygon"].Begin(); itrP != itr->GetObject_()["polygon"].End(); ++itrP) 
+                    points.push_back(itrP->GetInt());
 
-            int label = 0;// DDEBUG - must convert str to LABEL !!!!!
-
-            cameras.back().m_label = label;
-            std::cout << "label: " << label << std::endl;
-        }
-
-        // Get the "max-allowed" member 
-        if (doc.HasMember("max-allowed") && doc["max-allowed"].IsInt()) {
-            int threshold = doc["max-allowed"].GetInt();
-            cameras.back().m_maxAllowed = threshold;
-            std::cout << "camID: " << threshold << std::endl;
-        }
+                CHECK_exception(true, "Error in Polygon points list - list has OD elements");
 
 
-        // Get the "polygon" (points) array 
-        if (doc.HasMember("polygon")
-            && doc["polygon"].IsArray()) {
-            const rapidjson::Value& Points = doc["polygon"];
-            std::cout << "polygon points: ";
-
-            if (Points.Size() % 2 != 0) {
-                std::cout << "Error in Polygon points list - list has OD elements \n";
-                continue;
+                for (int p = 0; p < points.size(); p += 2)
+                    camInfo.m_polyPoints.push_back(cv::Point(points[p], points[p + 1]));
             }
 
-            for (rapidjson::SizeType i = 0; i < Points.Size(); i += 2) {
-                if (Points[i].IsInt() && Points[i + 1].IsInt()) {
-                    cameras.back().m_polyPoints.push_back(cv::Point(Points[i].GetInt(), Points[i + 1].GetInt()));
-                }
-            }
-        }
-    }
-
+            cameras.push_back(camInfo);
+		}
+	}
+	catch (const std::exception& err) {
+		std::cout << "Error in parsing file : " << fname << " : " << err.what() << "\n";
+	}
     return 1;
 
 
