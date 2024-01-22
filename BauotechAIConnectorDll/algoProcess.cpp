@@ -57,6 +57,7 @@
 	}
 	/*----------------------------------------------------------------------------------------------------
 	* Process thread (main loop) : Fetching frame from the queue , process frame and send to callback
+	* Run the m_tracker.process() and fills the 'm_Objects' objects 
 	  ---------------------------------------------------------------------------------------------------*/
 	int algoProcess::run_th(TSBuffQueue* bufQ)
 	{
@@ -82,10 +83,12 @@
 			m_objectCount = m_tracker.process((void*)frameBuff.ptr, m_Objects);
 
 			// DDEBUG : for getbjectData() API  
+			//---------------------------------------
 			if (1) {
 				std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);
 				m_pObjectsAPI.clear();
-				for (int i = 0; i < m_objectCount; i++)m_pObjectsAPI.push_back(m_Objects[i]); 
+				for (int i = 0; i < m_objectCount; i++)
+					m_pObjectsAPI.push_back(m_Objects[i]); 
 			}
 
 
@@ -130,6 +133,7 @@
 	/*---------------------------------------------------------------------------------------------------
 	* API function: getObjectData():
 	* return number of objects provided 
+	* index = -1 means return all valid objects (m_objectCount)
 	 ---------------------------------------------------------------------------------------------------*/
 	int algoProcess::getObjectData(int videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects, int& frameNum)
 	{
