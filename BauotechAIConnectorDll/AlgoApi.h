@@ -108,7 +108,7 @@ extern "C" {
 											    uint8_t youDraw,
 												CameraAICallback callback);
 										  
-	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint32_t frameNumber );
+	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber );
 
 
 	API_EXPORT void BauotechAlgoConnector_Init();

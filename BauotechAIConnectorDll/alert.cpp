@@ -92,7 +92,90 @@ std::vector<T> as_vector(ptree const& pt, ptree::key_type const& key)
 		r.push_back(item.second.get_value<T>());
 	return r;
 }
+#if 1
+/*--------------------------------------------------------------------------------------------
+*  Read cameras ROI ( as vector (polygon))
+* Format:
+* camID <>
+* detection-type <>
+* max-allowed <>
+* polygon <point1_X, point1_Y, point2_X, point2_Y, ...>
+ --------------------------------------------------------------------------------------------*/
+int readCamerasJson(std::string fname, std::vector <CAlert>& cameras)
+{
+    FILE* fp;
+    fopen_s(&fp, fname.c_str(), "rb");
 
+    // Check if the file was opened successfully 
+    if (!fp) {
+        std::cerr << "Error: unable to open file"
+            << std::endl;
+        return 1;
+    }
+
+    // Read the file into a buffer 
+    char readBuffer[65536];
+    rapidjson::FileReadStream is(fp, readBuffer,
+        sizeof(readBuffer));
+
+    // Parse the JSON document 
+    rapidjson::Document doc;
+    doc.ParseStream(is);
+
+    // Check if the document is valid 
+    if (doc.HasParseError()) {
+        std::cerr << "Error: failed to parse JSON document"
+            << std::endl;
+        fprintf(stderr, "\nError(offset %u): %s\n",
+            (unsigned)doc.GetErrorOffset(),
+            GetParseError_En(doc.GetParseError()));
+        fclose(fp);
+        return 0;
+    }
+
+    // Close the file 
+    fclose(fp);
+
+
+    // Parse file
+
+    rapidjson::Value::ConstValueIterator itr;
+
+    try {
+        for (itr = doc.Begin(); itr != doc.End(); ++itr) {
+            CAlert camInfo;
+            // Access the data in the object
+            camInfo.m_camID = itr->GetObject_()["camID"].GetInt();
+            //std::cout << "camID: " << camID << std::endl;
+            std::string typeStr = itr->GetObject_()["detection-type"].GetString();
+            camInfo.m_label = getYoloClassIndex(typeStr);
+
+            camInfo.m_maxAllowed = itr->GetObject_()["max-allowed"].GetInt();
+
+            if (itr->HasMember("polygon") && itr->GetObject_()["polygon"].IsArray()) {
+                std::vector <int> points;
+                rapidjson::Value::ConstValueIterator itrP;
+                for (itrP = itr->GetObject_()["polygon"].Begin(); itrP != itr->GetObject_()["polygon"].End(); ++itrP)
+                    points.push_back(itrP->GetInt());
+
+                CHECK_exception(true, "Error in Polygon points list - list has OD elements");
+
+                for (int p = 0; p < points.size(); p += 2)
+                    camInfo.m_polyPoints.push_back(cv::Point(points[p], points[p + 1]));
+            }
+
+            cameras.push_back(camInfo);
+        }
+    }
+    catch (const std::exception& err) {
+        std::cout << "Error in parsing file : " << fname << " : " << err.what() << "\n";
+    }
+
+    return cameras.size();
+}
+
+
+#else
 /*--------------------------------------------------------------------------------------------
 *  Read cameras ROI ( as vector (polygon))
 * Format:
@@ -190,4 +273,5 @@ int readCamerasJson(std::string fname, std::vector <CAlert>& cameras)
 
 
 }
+#endif 
 

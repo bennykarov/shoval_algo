@@ -16,7 +16,10 @@
 //const int MaxVideos = 10;
 CDetector g_tracker;
 TSBuffQueue g_bufQ;
-
+/*
+const int bufferLen = 10;
+boost::circular_buffer<CframeBuffer> g_bufQ2(bufferLen);
+*/
 // GLOBALS !
 std::ofstream g_debugFile; 
 bool printTime = false;
@@ -44,7 +47,8 @@ typedef struct tagRGB32TRIPLE {
 //std::unordered_map <uint32_t , VideoInfo>  gVideoInfo;
 
 // GLOBAL :
-algoProcess   g_algoProcess[MAX_VIDEOS] ;
+algoProcess   g_algoProcess[MAX_VIDEOS];
+//uint32_t g_frameNumbers[MAX_VIDEOS];
 
 
 
@@ -82,7 +86,6 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int 
 	int frameNum;
 	return g_algoProcess[videoIndex].getObjectData(videoIndex, index, pObjects, frameNum);
 
-	//memcpy(pObjects, &gAlgoObjects[videoIndex], sizeof(ALGO_DETECTION_OBJECT_DATA));
 }
 
 API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, ALGO_DETECTION_OBJECT_DATA* pObjects, uint32_t* objectCount)
@@ -97,13 +100,10 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, ALGO
 /*-------------------------------------------------------------------------------------------------------------------
 *  runner use the TSBuffQeue buffering 
  -------------------------------------------------------------------------------------------------------------------*/
-API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint32_t frameNumber)
+API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber)
 {
-	// take the video data here and leave immidiatly 
-	 
-	// benny will take the pData and index to his buffers - and release function 
-	// fifo_push(pdata, index);
-
+	//frameNumber = g_frameNumbers[videoIndex]; // count frames inside function, should be counted in caller function!
+	//g_frameNumbers[videoIndex] = frameNumber;
 	bool ok = g_bufQ.push(CframeBuffer(frameNumber, (char*)pData));
 
 	return ok ? 1 : 0;
@@ -124,8 +124,6 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 {
 
 	int bufSize = 10;
-
-	// if (1) pixelWidth = 4;// DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG for RGBA 
 		
 	// Init Queue 
 	g_bufQ.set(width, height, pixelWidth, bufSize);
@@ -135,6 +133,9 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 	// init callback function 
 	g_algoProcess[videoIndex].setCallback(callback);
 	g_algoProcess[videoIndex].setDrawFlag(int(youDraw));
+
+	/*for (auto &frameNum : g_frameNumbers)
+		frameNum = 0;*/
 
 	// Run Algo thread
 	g_algoProcess[videoIndex].run(&g_bufQ);
