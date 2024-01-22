@@ -41,18 +41,17 @@ public:
 	bool InitGPU();
 	int process(void *dataTemp, ALGO_DETECTION_OBJECT_DATA *pObjects);
 	int processFrame(cv::Mat &frame);
+	/*
 	void draw_old(cv::Mat& img, float scale);   // by Concluder (good objects)
 	void draw(cv::Mat& img, std::vector <CObject> detections, float scale);   // by Concluder (good objects)
 	void draw(cv::Mat &img, std::vector<YDetection> Youtput, float scale);   // for Yolo
 	void draw(cv::Mat &img, std::vector<cv::Rect>  rois, float scale);		 // for BGSeg
 	void drawInfo(cv::Mat &img);		
 	void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale);
-
 	int getDetectionCount();
+	*/
 	void setDrawing(bool flag) {  doDrawing = flag; }
 
-
-	//int draw();
 
 private:
 	bool motionDetected(cv::Mat mask);
@@ -81,7 +80,7 @@ private:
 	CYolo5 m_yolo;
 	//CTracker       m_tracker;
 	CDecipher m_decipher;
-	std::vector <CAlert> m_cameras;
+	std::vector <CAlert> m_camerasInfo;
 
 
 private:

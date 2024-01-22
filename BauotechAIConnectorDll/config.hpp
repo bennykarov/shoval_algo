@@ -13,8 +13,8 @@ namespace CONSTANTS {
 
 	// NEWs
 	int const DEFAULT_SKIP_FRAMES_BGSEG = 1;
-	int const DEFAULT_SKIP_FRAMES_YOLO = 2;//  2; // Process yolo in case motion was detected 
-	int const DEFAULT_INTERVAL_FRAMES_YOLO = 30; // 10;   // Process yolo in constant intervals 
+	int const DEFAULT_SKIP_FRAMES_IN_MOTION_YOLO = 2;//  2; // Process yolo in case motion was detected 
+	int const DEFAULT_SKIP_FRAMES_YOLO = 30; // 10;   // Process yolo in constant intervals 
 
 };
 
@@ -43,9 +43,9 @@ struct Config
 	float displayScale = 1.;
 	// OPtimization
 	int skipMotionFrames = CONSTANTS::DEFAULT_SKIP_FRAMES_BGSEG;
+	int skipDetectionFramesInMotion = CONSTANTS::DEFAULT_SKIP_FRAMES_IN_MOTION_YOLO; // in case  motion was detected
 	int skipDetectionFrames = CONSTANTS::DEFAULT_SKIP_FRAMES_YOLO; // in case  motion was detected 
-	int skipDetectionFrames2 = 2; // when person is previously was deteted 
-	int detectionInterval = CONSTANTS::DEFAULT_INTERVAL_FRAMES_YOLO; // in case NO motion was detected 
+	//int detectionInterval = CONSTANTS::DEFAULT_INTERVAL_FRAMES_YOLO; // in case NO motion was detected 
 	// Algo
 	int motionType = 1;
 	int trackerType = 0;

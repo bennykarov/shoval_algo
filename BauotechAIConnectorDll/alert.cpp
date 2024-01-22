@@ -101,7 +101,7 @@ std::vector<T> as_vector(ptree const& pt, ptree::key_type const& key)
 * max-allowed <>
 * polygon <point1_X, point1_Y, point2_X, point2_Y, ...>
  --------------------------------------------------------------------------------------------*/
-int readCamerasJson(std::string fname, std::vector <CAlert>& cameras)
+int readCamerasJson(std::string fname, std::vector <CAlert>& cameras, int cameraIndex)
 {
     FILE* fp;
     fopen_s(&fp, fname.c_str(), "rb");
@@ -145,7 +145,10 @@ int readCamerasJson(std::string fname, std::vector <CAlert>& cameras)
         for (itr = doc.Begin(); itr != doc.End(); ++itr) {
             CAlert camInfo;
             // Access the data in the object
-            camInfo.m_camID = itr->GetObject_()["camID"].GetInt();
+            int camID = itr->GetObject_()["camID"].GetInt();
+            if (camID != cameraIndex)
+                continue;
+            camInfo.m_camID = camID;
             //std::cout << "camID: " << camID << std::endl;
             std::string typeStr = itr->GetObject_()["detection-type"].GetString();
             camInfo.m_label = getYoloClassIndex(typeStr);

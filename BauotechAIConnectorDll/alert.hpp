@@ -29,7 +29,7 @@ public:
 };
 
 
-int readCamerasJson(std::string fname, std::vector <CAlert>& cameras);
+int readCamerasJson(std::string fname, std::vector <CAlert>& cameras, int cameraIndex);
 
 
 #endif 

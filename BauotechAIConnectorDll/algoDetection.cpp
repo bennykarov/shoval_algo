@@ -187,6 +187,7 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 
 	void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA* pObjects)
 	{
+		pObjects->ID = cObject.m_ID;
 		pObjects->X = cObject.m_bbox.x;
 		pObjects->Y = cObject.m_bbox.y;
 		pObjects->Width = cObject.m_bbox.width;
@@ -284,21 +285,38 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		else 
 			m_isCuda = checkForGPUs() > 0;	 
 
-		// DDEBUG note: multi camera - shold locate on upper level (multi cams level) -----------
-		int camCount = readCamerasJson(CONSTANTS::CAMERAS_FILE_NAME, m_cameras); 
-
-		if (camCount > 0)
-			m_decipher.set(m_cameras[0].m_polyPoints, m_cameras[0].m_label, m_cameras[0].m_maxAllowed); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
-		//---------------------------------------------------------------------------------------
-
-
-		// if (m_isCuda) MessageBoxA(0, "RUN WITH GPU", "Info", MB_OK);   else  MessageBoxA(0, "RUN WITOUT GPU", "Info", MB_OK);
-
+		// Handle ROI and active polygons:
+		//-------------------------------
 		if (m_params.camROI[2] > 0 && m_params.camROI[3] > 0 && m_params.camROI[0] + m_params.camROI[2] < w && m_params.camROI[1] + m_params.camROI[3] < h) {
 			m_camROI = cv::Rect(m_params.camROI[0], m_params.camROI[1], m_params.camROI[2], m_params.camROI[3]);
 		}
 		else
 			m_camROI = cv::Rect(0, 0, w, h);
+
+		int cameraIndex = 0;
+		int camCount = readCamerasJson(CONSTANTS::CAMERAS_FILE_NAME, m_camerasInfo , cameraIndex);
+		CHECK_exception(camCount > 0, std::string("Error , No camera.jeson was found in " + CONSTANTS::CAMERAS_FILE_NAME).c_str());
+
+		// Fix points to ROI
+		/* TBD
+			cv::Rect ployROI = cv::boundingRect(m_camerasInfo[0].m_polyPoints);
+			for (auto& point : m_camerasInfo[0].m_polyPoints)
+				point -= ployROI.tl();
+		*/
+		for (auto& point : m_camerasInfo[0].m_polyPoints)
+			point -= m_camROI.tl();
+
+			
+		//m_decipher.set(m_camerasInfo[0].m_polyPoints, m_camerasInfo[0].m_label, m_camerasInfo[0].m_maxAllowed); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
+
+		for (auto camInf : m_camerasInfo) {
+			if (camInf.m_camID == 0) // currently only one camera is supported !!
+				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_maxAllowed); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
+
+		}//---------------------------------------------------------------------------------------
+
+
+		// if (m_isCuda) MessageBoxA(0, "RUN WITH GPU", "Info", MB_OK);   else  MessageBoxA(0, "RUN WITOUT GPU", "Info", MB_OK);
 
 
 		if (m_params.MLType > 0)
@@ -333,7 +351,13 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		return true;
 		}
 
-
+	/*------------------------------------------------------------
+	* Process a frame : run:
+	* (1) BGSEG (MOG2) motion detection 
+	* (2) YOLO 
+	* (3) COnsolidate both ib the Decipher class 
+	* return number of tracked objects 
+	 ------------------------------------------------------------*/
 	int CDetector::processFrame(cv::Mat &frame_)
 	{
 		// Reset process flags
@@ -475,10 +499,9 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 			//if (sirenObjs.size() > 0) 
 			for (int k=0; k < sirenObjs.size();k++)
 				cObject_2_pObject(sirenObjs[k], &pObjects[k]);
-			
 		}
 
-
+#if 0
 		if (doDrawing) {
 			// Draw overlays :
 			//draw(m_frameOrg, m_Youtput , 1.0 / m_params.scale);
@@ -488,7 +511,7 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 			draw(m_frameOrg, sirenObjs, 1.0 / m_params.scale);
 			drawInfo(m_frameOrg);
 		}
-
+#endif 
 		m_frameNum++;
 
 		if (sirenObjs.size() > 1)
@@ -542,6 +565,52 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 	}
 
 
+	bool CDetector::motionDetected(cv::Mat mask)
+	{
+		return cv::countNonZero(mask) > ALGO_DETECTOPN_CONSTS::MIN_PIXELS_FOR_MOTION;
+	}
+
+
+	// Get motion (bgseg) interval 
+	bool CDetector::timeForMotion()
+	{
+		return (m_params.motionType > 0 && m_frameNum % m_params.skipMotionFrames == 0);
+	}
+
+	/*-------------------------------------------------------------------------
+	 * Get detection (YOLO) interval
+	 * 	detect in case:
+	 * (1) Person had been detected in prev frame
+	 * (2) Motion had been detected
+	 * (3) Const intraval cycle arrived
+	-------------------------------------------------------------------------*/
+	bool CDetector::timeForDetection()
+	{
+		if (m_params.MLType <= 0)
+			return false;
+
+		// Motion had been detected: 
+		if (m_BGSEGoutput.size() > 0) {
+			if (m_frameNum % m_params.skipDetectionFramesInMotion == 0)
+				return true;
+		}
+		// Intraval cycle arrived:
+		else if (m_frameNum % m_params.skipDetectionFrames == 0)
+			return true;
+#if 0
+		// Person had been detected in prev frame:
+		if (m_decipher.numberOfPersonsOnBoard() > 0)
+			if (m_frameNum % m_params.skipDetectionFrames == 0)
+				return true;
+#endif 
+
+		// otherwise 
+		return   false;
+
+	}
+
+
+#if 0
 	/*---------------------------------------------------------------------------------------------
 	 *			DRAW FUNCTIONS 
 	 ---------------------------------------------------------------------------------------------*/
@@ -683,8 +752,8 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		cv::rectangle(img, m_camROI, color, 2);
 
 		// Draw alert-polygon 
-		if (!m_cameras.empty())
-			drawPolygon(img, m_cameras[0].m_polyPoints, 1.); // DDEBUG draw camera[0]
+		if (!m_camerasInfo.empty())
+			drawPolygon(img, m_camerasInfo[0].m_polyPoints, 1.); // DDEBUG draw camera[0]
 
 
 		if (0)
@@ -692,116 +761,5 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 
 
 	}
-
-
-	bool CDetector::motionDetected(cv::Mat mask)
-	{ 
-		return cv::countNonZero(mask) > ALGO_DETECTOPN_CONSTS::MIN_PIXELS_FOR_MOTION;
-	}
-
-
-	// Get motion (bgseg) interval 
-	bool CDetector::timeForMotion() 
-	{ 
-		return (m_params.motionType > 0 && m_frameNum % m_params.skipMotionFrames == 0);
-	}
-	
-	/*-------------------------------------------------------------------------
-	 * Get detection (YOLO) interval 
-	 * 	detect in case:
-	 * (1) Person had been detected in prev frame
-	 * (2) Motion had been detected
-	 * (3) Const intraval cycle arrived
-	-------------------------------------------------------------------------*/
-	bool CDetector::timeForDetection()
-	{
-		if (m_params.MLType <= 0) 
-			return false;
-
-		// Motion had been detected: 
-		if (m_BGSEGoutput.size() > 0) {
-			if (m_frameNum % m_params.skipDetectionFramesInMotion == 0)
-					return true;
-		}
-		// Intraval cycle arrived:
-		else if (m_frameNum %  m_params.skipDetectionFrames == 0)
-				return true;
-#if 0
-		// Person had been detected in prev frame:
-		if (m_decipher.numberOfPersonsOnBoard() > 0)
-			if (m_frameNum % m_params.skipDetectionFrames == 0)
-				return true;
 #endif 
 
-		// otherwise 
-		return   false;
-
-	}
-
-	int CDetector::getDetectionCount()
-	{
-		return m_decipher.getPersonObjects(m_frameNum).size(); // not optimized !!!
-	}
-
-
-
-#if 0
-	class CYUV_Converter {
-	public:
-
-		int  main__(int argc, char** argv)
-		{
-			int width;
-			int height;
-			FILE* fin = NULL;
-			struct YUV_Capture cap;
-			enum YUV_ReturnValue ret;
-			IplImage* bgr;
-			if (argc != 4)
-			{
-				fprintf(stderr, "usage: %s file.yuv width height\n", argv[0]);
-				return 1;
-			}
-			width = atoi(argv[2]);
-			height = atoi(argv[3]);
-			if (width <= 0 || height <= 0)
-			{
-				fprintf(stderr, "error: bad frame dimensions: %d x %d\n", width, height);
-				return 1;
-			}
-			fin = fopen(argv[1], "rb");
-			if (!fin)
-			{
-				fprintf(stderr, "error: unable to open file: %s\n", argv[1]);
-				return 1;
-			}
-			ret = YUV_init(fin, width, height, &cap);
-			assert(ret == YUV_OK);
-
-			bgr = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, 3);
-			assert(bgr);
-
-			for (; ;)
-			{
-				ret = YUV_read(&cap);
-				if (ret == YUV_EOF)
-				{
-					cvWaitKey(0);
-					break;
-				}
-				else if (ret == YUV_IO_ERROR)
-				{
-					fprintf(stderr, "I/O error\n");
-					break;
-				}
-				cvCvtColor(cap.ycrcb, bgr, CV_YCrCb2BGR);
-				cvShowImage(argv[1], bgr);
-				cvWaitKey(35);
-			}
-
-			return 0;
-		}
-
-
-	};
-#endif 
