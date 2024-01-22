@@ -7,6 +7,9 @@
 
 
 
+#include <boost/circular_buffer.hpp>
+
+
 class CframeBuffer {
 public:
     CframeBuffer() {}
@@ -14,6 +17,7 @@ public:
 
     char *ptr = nullptr;
     int frameNum = -1;
+
     void free() {
         if (ptr != nullptr) {
 			delete[] ptr;
@@ -32,14 +36,20 @@ private:
     int m_imgWidth;
     int m_imgHeight;
     int m_depth; // in bytes
-    int bufferSize() { return m_imgWidth * m_imgHeight * m_depth; }
-    int bufferSize_() { return int((float)(m_imgWidth * m_imgHeight) * 1.5); }
+    //-------------------------------------------------------------------------------------------------------------
+    // bufferSize() : depth ==2 here means YV12, where depth is 1.5 bytes per pixel (where 4 pixels share data):
+    //-------------------------------------------------------------------------------------------------------------
+    int bufferSize() { return (m_depth == 2 ? bufferSize_YV12() : m_imgWidth * m_imgHeight * m_depth); }
+    int bufferSize_YV12() { return int((float)(m_imgWidth * m_imgHeight) * 1.5); }
     int m_queueLen;
 
     int pushPtr = 0;    // index in queue
-    int popPtr = -1;  // index in queue
+    int popPtr =  -1;  // index in queue
 
     int ptrNext(int ptr);
+
+    boost::circular_buffer<int> m_queueIndex;
+
 
 public:
     TSBuffQueue() {}
@@ -54,5 +64,5 @@ public:
     // Pushes an element to the queue 
     bool push(CframeBuffer);
     CframeBuffer pop();
-    CframeBuffer back();
+    CframeBuffer front();
 };

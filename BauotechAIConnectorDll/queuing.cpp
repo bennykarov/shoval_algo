@@ -3,6 +3,8 @@
 #include <mutex> 
 #include <queue> 
 
+
+
 #include "queuing.hpp"
 
 
@@ -37,19 +39,29 @@
         }
     }
 
-    // Pushes an element to the queue 
+    /*---------------------------------------------------------------------
+     Pushes an element to the queue 
+     'pushPtr' is the index of the next element to be pushed
+     Push any case - even if queue is full (overwrite previous frames in queue)
+     TBD: in case POP is in the same location - skip to next location 
+     ---------------------------------------------------------------------*/
     bool TSBuffQueue::push(CframeBuffer frame)
     {
-        std::lock_guard<std::mutex> bufferLockGuard(g_BufferMutex);
+        std::lock_guard<std::mutex> bufferLockGuard(g_BufferMutex); // ????  DDEBUG ????
+
+        //std::cout << ">> push = " << m_buffers[pushPtr].frameNum << std::endl;
 
         if (pushPtr == popPtr) {
-            std::cout << "overfloaw in buffer queueing \n";
-            return false; // queue is full
+            std::cout << "overflow in buffer queueing \n";
+            //return false; // queue is full
+            // must add a location mutex to sync shared position 
         }
 
-        memcpy(m_buffers[pushPtr].ptr, frame.ptr, bufferSize_());
+        memcpy(m_buffers[pushPtr].ptr, frame.ptr, bufferSize());
         m_buffers[pushPtr].frameNum = frame.frameNum;
 
+
+        // Starter to popPtr
         if (popPtr < 0)
 			popPtr = pushPtr;
 
@@ -58,41 +70,112 @@
     }
 
     // Pops an element off the queue 
+    // 'popPtr' is the index of the next element to be pushed
     CframeBuffer TSBuffQueue::pop()
     {
-        popPtr = ptrNext(popPtr);
-        if (popPtr == pushPtr)
+        // handle First time 
+        if (popPtr < 0 && pushPtr !=0)
+            popPtr = 0;
+
+        // Check overflow , quit, wait until Push location advance
+        int checkPtr = ptrNext(popPtr);        
+        if (checkPtr == pushPtr)  
             return CframeBuffer();
 
-        return this->m_buffers[popPtr];
+        popPtr = ptrNext(popPtr);
+
+        //std::cout << "<< pop = " << m_buffers[popPtr].frameNum << std::endl;
+
+        return m_buffers[popPtr];
     }
-    // Get pop element off the queue 
-    CframeBuffer TSBuffQueue::back()
+    // Get pop (front) element off the queue 
+    CframeBuffer TSBuffQueue::front()
     {
         if (popPtr < 0)
             return CframeBuffer();
 
-        return this->m_buffers[popPtr];
+        return m_buffers[popPtr];
 
     }
 
+// NOTES \ FRAFTS 
 #if 0
-// Driver code 
-int test_queu()
-{
-    TSQueue<int> q;
+//------------------------------------------------------------------------------------
+// Thread safe circular buffer
+//------------------------------------------------------------------------------------
+#include <boost/thread/condition.hpp>
+#include <boost/thread/mutex.hpp>
+#include <boost/thread/thread.hpp>
+#include <boost/circular_buffer.hpp>
 
-    // Push some data 
-    q.push(1);
-    q.push(2);
-    q.push(3);
+    // Thread safe circular buffer 
+    template <typename T>
+    class circ_buffer : private boost::noncopyable
+    {
+    public:
+        typedef boost::mutex::scoped_lock lock;
+        circ_buffer() {}
+        circ_buffer(int n) { cb.set_capacity(n); }
+        void send(T imdata) {
+            lock lk(monitor);
+            cb.push_back(imdata);
+            buffer_not_empty.notify_one();
+        }
+        T receive() {
+            lock lk(monitor);
+            while (cb.empty())
+                buffer_not_empty.wait(lk);
+            T imdata = cb.front();
+            cb.pop_front();
+            return imdata;
+        }
+        void clear() {
+            lock lk(monitor);
+            cb.clear();
+        }
+        int size() {
+            lock lk(monitor);
+            return cb.size();
+        }
+        void set_capacity(int capacity) {
+            lock lk(monitor);
+            cb.set_capacity(capacity);
+        }
+    private:
+        boost::condition buffer_not_empty;
+        boost::mutex monitor;
+        boost::circular_buffer<T> cb;
+    };
+#endif 
 
-    // Pop some data 
-    std::cout << q.pop() << std::endl;
-    std::cout << q.pop() << std::endl;
-    std::cout << q.pop() << std::endl;
 
-    return 0;
-}
-#endif
 
+#if 0
+    boost::circular_buffer<int> cb(3);
+    // Insert three elements into the buffer.
+    cb.push_back(1);
+    cb.push_back(2);
+    cb.push_back(3);
+
+    int a = cb[0];  // a == 1
+    int b = cb[1];  // b == 2
+    int c = cb[2];  // c == 3
+
+    // The buffer is full now, so pushing subsequent
+    // elements will overwrite the front-most elements.
+
+    cb.push_back(4);  // Overwrite 1 with 4.
+    cb.push_back(5);  // Overwrite 2 with 5.
+
+    // The buffer now contains 3, 4 and 5.
+    a = cb[0];  // a == 3
+    b = cb[1];  // b == 4
+    c = cb[2];  // c == 5
+
+    // Elements can be popped from either the front or the back.
+    cb.pop_back();  // 5 is removed.
+    cb.pop_front(); // 3 is removed.
+
+    // Leaving only one element with value = 4.
+    int d = cb[0];  // d == 4
+#endif 
