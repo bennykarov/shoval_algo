@@ -50,6 +50,9 @@
 	{
 		m_thread = std::thread(&algoProcess::run_th, this, bufQ);
 
+		std::cout << "GPU warmup for one second... \n";
+		Sleep(1000); // DDEBBUG let CUDA and GPU init
+
 		return m_thread.joinable();
 	}
 	/*----------------------------------------------------------------------------------------------------
@@ -60,21 +63,29 @@
 		CframeBuffer frameBuff;
 
 		while (!m_terminate) {
-			frameBuff = bufQ->back();
-			m_frameNum = frameBuff.frameNum;
+			frameBuff = bufQ->front();
 			if (frameBuff.ptr == nullptr) {
 				Sleep(20);
 				continue;
 			}
+			if (1)
+			if (m_frameNum == frameBuff.frameNum ) {
+				std::cout << "m_frameNum == frameBuff.frameNum  \n";
+				//Beep(900, 20);
+				Sleep(20);
+				//bufQ->pop(); // release buffer
+				continue;
+			}
+
+			m_frameNum = frameBuff.frameNum;
 
 			m_objectCount = m_tracker.process((void*)frameBuff.ptr, m_Objects);
 
-			if (1) // DDEBUG : for getbjectData() API
-			{
+			// DDEBUG : for getbjectData() API  
+			if (1) {
 				std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);
 				m_pObjectsAPI.clear();
-				for (int i = 0; i < m_objectCount; i++)
-					m_pObjectsAPI.push_back(m_Objects[i]); // for debug API
+				for (int i = 0; i < m_objectCount; i++)m_pObjectsAPI.push_back(m_Objects[i]); 
 			}
 
 
@@ -83,7 +94,7 @@
 
 			int i = 0;
 			for (;i < m_objectCount; i++)
-				m_Objects[i].frameNum = frameBuff.frameNum;
+				m_Objects[i].frameNum = m_frameNum;
 			for (;i < MAX_OBJECTS; i++)
 				m_Objects[i].frameNum = -1;
 
@@ -95,12 +106,12 @@
 			{
 				m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
 			}
-			//else // DDEBUG DDEBUG DDEBUG DDEBUG 
-				//fakeCallBack(m_videoIndex, m_Objects, m_objectCount, nullptr, 0);
 		}
 
 
 		// termination()...
+		Sleep(20); // DDEBUG DDEBUG 
+
 		return m_frameNum > 0;
 
 	}
@@ -122,7 +133,7 @@
 	 ---------------------------------------------------------------------------------------------------*/
 	int algoProcess::getObjectData(int videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects, int& frameNum)
 	{
-		if (index >= m_objectCount && m_objectCount == 0)
+		if (index >= m_objectCount || m_objectCount == 0)
 			return 0;
 
 		std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);

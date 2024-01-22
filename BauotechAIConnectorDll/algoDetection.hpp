@@ -41,7 +41,8 @@ public:
 	bool InitGPU();
 	int process(void *dataTemp, ALGO_DETECTION_OBJECT_DATA *pObjects);
 	int processFrame(cv::Mat &frame);
-	void draw(cv::Mat &img, float scale);   // by Concluder (good objects)
+	void draw_old(cv::Mat& img, float scale);   // by Concluder (good objects)
+	void draw(cv::Mat& img, std::vector <CObject> detections, float scale);   // by Concluder (good objects)
 	void draw(cv::Mat &img, std::vector<YDetection> Youtput, float scale);   // for Yolo
 	void draw(cv::Mat &img, std::vector<cv::Rect>  rois, float scale);		 // for BGSeg
 	void drawInfo(cv::Mat &img);		
@@ -95,6 +96,6 @@ private:
 	unsigned int m_objectID_counter = 0;
 	cv::Rect m_camROI = cv::Rect(0,0,0,0);
 	bool m_isCuda;
-	bool doDrawing = true;
+	bool doDrawing = false;
 
 };

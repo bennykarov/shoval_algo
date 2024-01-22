@@ -40,7 +40,7 @@ private:
 	std::mutex m_BufferMutex;
 
 	bool m_terminate = false;
-	int m_frameNum = 0;
+	int m_frameNum = -1;
 	int m_videoIndex;
 
 	int m_width, m_height, m_imageSize, m_pixelWidth;

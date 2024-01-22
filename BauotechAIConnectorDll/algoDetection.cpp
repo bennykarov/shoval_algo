@@ -81,8 +81,6 @@
 #endif
 */
 
-//int readCameraJson(std::string fname, std::vector <CAlert>& m_cameras);
-
 
 namespace  ALGO_DETECTOPN_CONSTS {
 	const int MIN_CONT_AREA = 20 * 10;
@@ -98,27 +96,6 @@ namespace  ALGO_DETECTOPN_CONSTS {
 
 const std::vector<cv::Scalar> colors = { cv::Scalar(255, 255, 0), cv::Scalar(0, 255, 0), cv::Scalar(0, 255, 255), cv::Scalar(255, 0, 0) };
 
-#if 0
-std::vector <CRoi2frame>  readROISfile(std::string fname)
-{
-	std::vector <CRoi2frame>  rois2frames;
-	//int frameNum;
-	ifstream roisFile(fname);
-
-	if (!roisFile.is_open())
-		return std::vector <CRoi2frame>();
-
-	CRoi2frame newBBox2f;
-	int index;
-	while (!roisFile.eof()) {
-		roisFile >> index >> newBBox2f.frameNum >> newBBox2f.bbox.x >> newBBox2f.bbox.y >> newBBox2f.bbox.width >> newBBox2f.bbox.height;
-		if (index > 0 && !roisFile.eof())
-			rois2frames.push_back(newBBox2f);
-	}
-
-	return rois2frames;
-}
-#endif 
 
 void setConfigDefault(Config &params)
 {
@@ -132,7 +109,7 @@ void setConfigDefault(Config &params)
 	params.MlearningRate = -1;
 	params.skipMotionFrames = 1;
 	params.skipDetectionFrames = 3;
-	params.skipDetectionFrames2 = 3;
+	//params.skipDetectionFrames2 = 3;
 }
 
 bool readConfigFile(std::string ConfigFName, Config &conf)
@@ -157,7 +134,7 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 	// [OPTIMIZE]  Optimization
 	conf.skipMotionFrames = pt.get<int>("ALGO.stepMotion", conf.skipMotionFrames);
 	conf.skipDetectionFrames = pt.get<int>("ALGO.stepDetection", conf.skipDetectionFrames);
-	conf.skipDetectionFrames2 = pt.get<int>("ALGO.stepDetection2", conf.skipDetectionFrames2);
+	conf.skipDetectionFramesInMotion = pt.get<int>("ALGO.stepDetectionInMotion", conf.skipDetectionFramesInMotion);
 	//---------
 	// ALGO:
 	//---------
@@ -208,7 +185,7 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 	}
 
 
-	void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA *pObjects)
+	void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA* pObjects)
 	{
 		pObjects->X = cObject.m_bbox.x;
 		pObjects->Y = cObject.m_bbox.y;
@@ -258,7 +235,7 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 	{
 		std::ofstream debugFile("c:\\tmp\\algoapi.txt");
 
-		debugFile << w << " , " << h << " , " << imgSize << " , " << pixelWidth << " , " << scaleDisplay << " , " << params.useGPU << " , " << params.MLType << " , " << params.skipDetectionFrames << " , " << params.skipDetectionFrames2 << "\n";
+		debugFile << w << " , " << h << " , " << imgSize << " , " << pixelWidth << " , " << scaleDisplay << " , " << params.useGPU << " , " << params.MLType << " , " << params.skipDetectionFramesInMotion << " , "  << params.skipDetectionFrames << "\n";
 		debugFile.close();
 
 	}
@@ -298,7 +275,7 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 
 			
 		setConfigDefault(m_params);
-		readConfigFile("C:\\Program Files\\Bauotech\\config.ini", m_params);
+		readConfigFile(CONSTANTS::CONFIG_FILE_NAME, m_params);
 		debugSaveParams(w, h, imgSize, pixelWidth, scaleDisplay, m_params);
 
 
@@ -308,7 +285,7 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 			m_isCuda = checkForGPUs() > 0;	 
 
 		// DDEBUG note: multi camera - shold locate on upper level (multi cams level) -----------
-		int camCount = readCamerasJson(CAMERAS_FILE_NAME, m_cameras); 
+		int camCount = readCamerasJson(CONSTANTS::CAMERAS_FILE_NAME, m_cameras); 
 
 		if (camCount > 0)
 			m_decipher.set(m_cameras[0].m_polyPoints, m_cameras[0].m_label, m_cameras[0].m_maxAllowed); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
@@ -364,27 +341,7 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		m_BGSEGoutput.clear();
 		m_motionDetectet = 0;
 
-#if 0  
-		//moved to upper level 
-		cv::Mat frame;
-		if (frame_.channels() == 4) {
-			cv::cvtColor(frame_, frame, cv::COLOR_BGRA2BGR);
-		}
-		else if (frame_.channels() == 2) {
-			cv::cvtColor(frame_, frame, cv::COLOR_YUV2BGR);
-		}
-		else
-			frame = frame_;
-#endif 
 		cv::Mat frame = frame_;
-
-
-		if (0)
-		{
-			imshow("DLL benny", frame);
-			cv::waitKey(1);
-		}
-
 
 		// BG seg detection
 		//--------------------
@@ -402,18 +359,17 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 
 			}
 		}
-		else
-			int debug = 10;
 
 		// YOLO detection
 		//--------------------
+		m_Youtput.clear();
 		if (timeForDetection()) {
-			m_Youtput.clear();
-
 			m_yolo.detect(frame, m_Youtput);
 			if (m_params.debugLevel > 2 && personsDetected(m_Youtput))
 				Beep(900, 10);// DDEBUG 			
 		}
+		if (m_Youtput.size() > 1)
+			int debug = 10;
 
 		m_decipher.add(m_BGSEGoutput, m_Youtput, m_frameNum); // add & match
 
@@ -502,21 +458,24 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 
 		objects_tracked = processFrame(m_frame);
 
+		if (objects_tracked > 1)
+			int debug = 10;
+
 		/*
 		pObjects->reserved1_personsCount = m_decipher.getPersonObjects(m_frameNum).size();
 		pObjects->reserved2_motion = objects_tracked; //  m_motionDetectet ? 1 : 0;
 		*/
 
-		//if (m_decipher.getPersonObjects(m_frameNum).size() > 0) {
+
 		if (m_decipher.getObjects(m_frameNum).size() > 0) {
 			sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale);
 
-			if (sirenObjs.size() > 0) {
-				cObject_2_pObject(sirenObjs[0], pObjects);
-			}
 
-			//pObjects->reserved1_personsCount = sirenObjs.size();
-			//pObjects->reserved1 = sirenObjs.size();
+
+			//if (sirenObjs.size() > 0) 
+			for (int k=0; k < sirenObjs.size();k++)
+				cObject_2_pObject(sirenObjs[k], &pObjects[k]);
+			
 		}
 
 
@@ -526,11 +485,14 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 			if (m_params.showMotion)
 				draw(m_frameOrg, m_BGSEGoutput, 1.0 / m_params.scale);
 
-			draw(m_frameOrg, 1.0 / m_params.scale);
+			draw(m_frameOrg, sirenObjs, 1.0 / m_params.scale);
 			drawInfo(m_frameOrg);
 		}
 
 		m_frameNum++;
+
+		if (sirenObjs.size() > 1)
+			int debug = 10;
 
 		return sirenObjs.size();
 	}
@@ -583,8 +545,33 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 	/*---------------------------------------------------------------------------------------------
 	 *			DRAW FUNCTIONS 
 	 ---------------------------------------------------------------------------------------------*/
+	void CDetector::draw(cv::Mat& img, std::vector <CObject> detections, float scale)
+	{
+		cv::Scalar  color(0, 0, 0);
 
-	void CDetector::draw(cv::Mat &img, float scale)
+		for (auto obj : detections) {
+			auto box = scaleBBox(obj.m_bbox, scale);
+			box += cv::Point(m_camROI.x, m_camROI.y);
+			auto classId = obj.m_finalLabel;
+			//--------------------------------------------------------------
+			// Colors: 
+			//        RED for person, 
+			//        BLUE for moving YOLO object (other than Person), 
+			//		  White for motion tracking 
+			//--------------------------------------------------------------
+			//if (obj.m_finalLabel == Labels::person)
+			color = cv::Scalar(0, 0, 255); // colors[classId % colors.size()];
+
+			cv::rectangle(img, box, color, 3);
+			// Add lablel
+			if (obj.m_finalLabel != Labels::nonLabled) {
+				cv::rectangle(img, cv::Point(box.x, box.y - 20), cv::Point(box.x + box.width, box.y), color, cv::FILLED);
+				cv::putText(img, m_yolo.getClassStr(classId).c_str(), cv::Point(box.x, box.y - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
+			}
+		}
+
+	}
+	void CDetector::draw_old(cv::Mat &img, float scale)
 	{
 		cv::Scalar  color(0, 0, 0);
 
@@ -731,18 +718,20 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		if (m_params.MLType <= 0) 
 			return false;
 
+		// Motion had been detected: 
+		if (m_BGSEGoutput.size() > 0) {
+			if (m_frameNum % m_params.skipDetectionFramesInMotion == 0)
+					return true;
+		}
+		// Intraval cycle arrived:
+		else if (m_frameNum %  m_params.skipDetectionFrames == 0)
+				return true;
+#if 0
 		// Person had been detected in prev frame:
 		if (m_decipher.numberOfPersonsOnBoard() > 0)
 			if (m_frameNum % m_params.skipDetectionFrames == 0)
 				return true;
-		// Motion had been detected: 
-		if (m_BGSEGoutput.size() > 0) {
-			if (m_frameNum % m_params.skipDetectionFrames == 0)
-					return true;
-		}
-		// Intraval cycle arrived:
-		else if (m_frameNum %  m_params.detectionInterval == 0)
-				return true;
+#endif 
 
 		// otherwise 
 		return   false;
