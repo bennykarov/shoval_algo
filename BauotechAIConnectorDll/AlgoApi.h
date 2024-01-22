@@ -19,7 +19,7 @@ typedef struct ALGO_DETECTION_OBJECT_DATA
 	int ObjectType; // optional
 	int DetectionPercentage;// optional
 	int frameNum;
-	int reserved2;
+	int ID; // reserved2;
 } ALGO_DETECTION_OBJECT_DATA;
 #pragma pack(pop) 
 

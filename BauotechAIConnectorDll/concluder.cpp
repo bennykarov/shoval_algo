@@ -30,16 +30,16 @@ void CDecipher::add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection
 		CObject newObj(bgRect, frameNum, 0, DETECT_TYPE::BGSeg, Labels::nonLabled);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
 		int ind = bestMatch(bgRect, 0.2);// , matchInds);
 		if (ind >= 0) {
+			newObj.m_ID = m_objects[ind].back().m_ID;
 			m_objects[ind].push_back(newObj);
 			matchInds.push_back(ind);
 		}
 		else {
-			// New object
+			newObj.m_ID = m_UniqueID++;
+			// New object (vector of objects along time)
 			m_objects.push_back(std::vector <CObject>());
 			m_objects.back().push_back(newObj);
 		}
-
-		//m_objects.back().back().m_finalLabel = calcFinalLable(m_objects.back());
 	}
 
 	// Add YOLO object - match to BGSeg objects (if does)
@@ -47,16 +47,14 @@ void CDecipher::add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection
 	for (auto Yobj : YoloOutput) {
 		CObject newObj(Yobj.box, frameNum, 0, DETECT_TYPE::ML, (Labels)Yobj.class_id);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
 
-		if (newObj.m_label == Labels::person)
-			int debug = 10;
-
-		int ind = bestMatch(Yobj.box, 0.5);
+		int ind = bestMatch(Yobj.box, 0.3);
 		if (ind >= 0) {
 			m_objects[ind].push_back(newObj);
 			matchInds.push_back(ind);
 		}
 		else {
 			// New object
+			newObj.m_ID = m_UniqueID++;
 			m_objects.push_back(std::vector <CObject>());
 			m_objects.back().push_back(newObj);
 			if (newObj.m_label == Labels::person)
@@ -82,7 +80,7 @@ void CDecipher::add(std::vector <YDetection> YoloOutput, int frameNum)
 /*------------------------------------------------------------------
  *	Match RECT to prev RECTs in objects list 
  *-----------------------------------------------------------------*/
-int CDecipher::bestMatch(cv::Rect box, float overlappedRatio, std::vector <int> ignoreInds)
+int CDecipher::bestMatch(cv::Rect box, float OverlappedThrash, std::vector <int> ignoreInds)
 {
 	std::vector <int>  bestInds;
 	std::vector <float>  bestScores;
@@ -93,11 +91,19 @@ int CDecipher::bestMatch(cv::Rect box, float overlappedRatio, std::vector <int> 
 		for (auto obj : m_objects[i]) {
 			float overlappingRatio = bboxesBounding(obj.m_bbox, box); // most new box overlapped old box
 			// Check (1) overlapping ratio (2) The sizes are similars (kind of) (3) the distance is reasonable 
-			if (overlappingRatio > overlappedRatio && 
+			if (overlappingRatio > OverlappedThrash &&
 				similarAreas(obj.m_bbox, box, 0.6*0.6) &&
 				distance(obj.m_bbox, box) < CONCLUDER_CONSTANTS::MAX_MOTION_PER_FRAME) {
 				bestInds.push_back(i);
 				bestScores.push_back(overlappingRatio);
+			}
+			else {
+				// DDEBUG INFO 
+				int error;
+				error = overlappingRatio > OverlappedThrash ? 0 : 1;
+				error += similarAreas(obj.m_bbox, box, 0.6 * 0.6) ? 0 : 10;
+				error +=  distance(obj.m_bbox, box) < CONCLUDER_CONSTANTS::MAX_MOTION_PER_FRAME ? 0 : 100;
+				int debug = 10;
 			}
 		}
 	}
@@ -415,7 +421,10 @@ int CDecipher::numberOfPersonsOnBoard()
 -------------------------------------------------------------------*/
 std::vector <CObject> CDecipher::getSirenObjects(float scale)
 {
-	std::vector <CObject> scaledDetectedObjects;
+	std::vector <CObject> scaledDetectedObjects, sirenObjects;
+
+
+
 
 	// Scale back to origin dimensions is required
 	for (auto obj : m_detectedObjects) {
@@ -423,5 +432,18 @@ std::vector <CObject> CDecipher::getSirenObjects(float scale)
 		scaledDetectedObjects.back().m_bbox = scaleBBox(obj.m_bbox, scale);
 	}
 
-	return m_alert.selectObjects(scaledDetectedObjects);
+	for (auto alert : m_alerts) {
+		std::vector <CObject> sirenSingleCam =  alert.selectObjects(scaledDetectedObjects);
+		sirenObjects.insert(sirenObjects.end(), sirenSingleCam.begin(), sirenSingleCam.end());
+	}
+	return sirenObjects;
 }
+
+int CDecipher::Siren()
+{
+	int siren = 0;
+	for (auto alert : m_alerts)
+		siren += alert.Siren(m_detectedObjects);
+	return siren;
+}
+

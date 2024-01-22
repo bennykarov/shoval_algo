@@ -80,7 +80,7 @@ public:
 
 
 public:
-	unsigned int	m_ID = 0;
+	unsigned int	m_ID = 0;  //unique id
 	Labels			m_label = Labels::nonLabled; // current detection label
 	Labels			m_finalLabel = Labels::nonLabled;  // Conclusion of all detection labels
 	cv::Rect		m_bbox; // DDEBUG for debug

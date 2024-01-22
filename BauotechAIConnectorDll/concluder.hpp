@@ -9,11 +9,11 @@
 namespace CONCLUDER_CONSTANTS
 {
 	//const int CLOSE_ENOUGH = 30; // pixels
-	const int MAX_MOTION_PER_FRAME = 10;
+	const int MAX_MOTION_PER_FRAME = 20;//  10;
 	const int GOOD_TRACKING_LEN = 20;
 	const int INHERIT_LABEL_LEN  = 30 * 1; //  1 sec
 	const int MAX_OTHERS_HIDDEN_FRAMES = 4;
-	const int MAX_PERSON_HIDDEN_FRAMES = 25;
+	const int MAX_PERSON_HIDDEN_FRAMES = 4;
 }
 
 cv::Point2f center(cv::Rect r);
@@ -37,15 +37,13 @@ public:
 	CObject get(int i) { return m_objects[i].back(); }
 	int  numberOfPersonsOnBoard(); // return number of person on board (including hidden objects)
 
-	void	set(std::vector<cv::Point > contour, int label, int max_allowed)
+	void	set(std::vector<cv::Point> contour, int label, int max_allowed)
 	{
-		m_alert.set(contour, label, max_allowed);
+		m_alerts.push_back(CAlert(contour, label, max_allowed));
+		//m_alert.set(contour, label, max_allowed);
 	}
 
-	int Siren()
-	{
-		return m_alert.Siren(m_detectedObjects);
-	}
+	int Siren();
 
 	std::vector <CObject> getSirenObjects(float scale = 1.);
 
@@ -66,7 +64,9 @@ private:
 
 private:
 
-	CAlert m_alert;
+	unsigned long m_UniqueID = 0;
+
+	std::vector <CAlert> m_alerts;
 
 	std::vector <std::vector <CObject>> m_objects;
 	std::vector <CObject> m_detectedObjects;
