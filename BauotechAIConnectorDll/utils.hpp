@@ -223,4 +223,6 @@ private:
  
  float bboxesBounding(cv::Rect2f r1, cv::Rect2f r2); // Ratio of r1 overlapping r2
  float OverlappingRatio(cv::Rect2f r1, cv::Rect2f r2); // Ratio of overlapping (bi directional)
+ int depth2cvType(int depth);
+ cv::Mat converPTR2MAT(void* data, int height, int width, int depth);
 

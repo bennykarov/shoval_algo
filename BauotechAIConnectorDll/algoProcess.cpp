@@ -8,16 +8,17 @@
 
 #include "AlgoApi.h"
 #include "config.hpp"
-
+#include "utils.hpp"
 #include "AlgoDetection.hpp"
 
 #include "algoProcess.hpp"
 
+typedef std::chrono::duration<float, std::milli> duration;
 
 /*===========================================================================================
 * AlgoProcess (thread) class
   ===========================================================================================*/
-	bool algoProcess::init(int video_index, int width, int height, int image_size, int pixelWidth)
+	bool algoProcess::init(int video_index, int width, int height, int image_size, int pixelWidth, char *cameraConfig)
 	{
 		//gAICllbacks[videoIndex](videoIndex, aidata, 1, nullptr, 0);
 		m_videoIndex = video_index;
@@ -29,7 +30,7 @@
 
 		int badImageSize = imageSize();
 
-		bool ok = m_tracker.init(m_width, m_height, image_size, m_pixelWidth, m_scale/*0.5*/);
+		bool ok = m_tracker.init(m_width, m_height, image_size, m_pixelWidth, cameraConfig, m_scale/*0.5*/);
 		return ok;
 	}
 
@@ -62,6 +63,10 @@
 	int algoProcess::run_th(TSBuffQueue* bufQ)
 	{
 		CframeBuffer frameBuff;
+		long frameCount = 0;
+		duration g_elapsedSum = duration(0);
+		duration g_elapsedMin = duration(10000);
+		duration g_elapsedMax = duration(0);
 
 		while (!m_terminate) {
 			frameBuff = bufQ->front();
@@ -70,17 +75,32 @@
 				continue;
 			}
 			if (1)
-			if (m_frameNum == frameBuff.frameNum ) {
-				std::cout << "m_frameNum == frameBuff.frameNum  \n";
-				//Beep(900, 20);
-				Sleep(20);
-				//bufQ->pop(); // release buffer
-				continue;
-			}
+				if (m_frameNum == frameBuff.frameNum) {
+					//>>std::cout << "m_frameNum == frameBuff.frameNum  \n";
+					Sleep(5);
+					//bufQ->pop(); // release buffer
+					continue;
+				}
 
 			m_frameNum = frameBuff.frameNum;
 
-			m_objectCount = m_tracker.process((void*)frameBuff.ptr, m_Objects);
+
+			auto start = std::chrono::system_clock::now();
+
+			// m_objectCount = m_tracker.process((void*)frameBuff.ptr, m_Objects);
+			cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
+			m_objectCount = m_tracker.process(frameBGR, m_Objects);
+
+
+			auto end = std::chrono::system_clock::now();
+
+
+			duration elapsed = end - start;
+			g_elapsedMin = MIN(g_elapsedMin, elapsed);
+			g_elapsedMax= MAX(g_elapsedMax, elapsed);
+
+			g_elapsedSum += elapsed;
+
 
 			// DDEBUG : for getbjectData() API  
 			//---------------------------------------
@@ -107,18 +127,75 @@
 			// send the data to the callback
 			if (m_callback != nullptr && m_objectCount > 0)
 			{
+				if (m_objectCount > 2)
+					int debug = 10;
+				std::cout << "Find " << m_objectCount << " objects \n";
+
 				m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
 			}
+
+			frameCount++;
+			if (frameCount % 30 == 0) {
+				std::cout << " FPS = " << 1000. / (g_elapsedSum.count() / 30.) << " ( min / max = " << (1000. / g_elapsedMin.count())  << " , " << (1000. / g_elapsedMax.count()) <<  "\n";
+				g_elapsedSum = duration(0);
+				g_elapsedMax = duration(0);
+				g_elapsedMin = duration(100000);
+
+				frameCount = 0;
+			}
+
 		}
 
 
 		// termination()...
-		Sleep(20); // DDEBUG DDEBUG 
+		//Sleep(20); // DDEBUG DDEBUG 
 
 		return m_frameNum > 0;
 
 	}
 
+	int algoProcess::run_sync(void *pData, int frameNum, ALGO_DETECTION_OBJECT_DATA *AIobjects)
+	{
+		CframeBuffer frameBuff;
+		frameBuff.ptr = (char*)pData;
+		frameBuff.frameNum = frameNum;
+
+		long frameCount = 0;
+
+
+		duration g_elapsedSum = duration(0);
+		duration g_elapsedMin = duration(10000);
+		duration g_elapsedMax = duration(0);
+
+		m_frameNum = frameBuff.frameNum;
+
+
+		auto start = std::chrono::system_clock::now();
+
+		//m_objectCount = m_tracker.process((void*)frameBuff.ptr, m_Objects);
+		cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
+		m_objectCount = m_tracker.process(frameBGR, m_Objects);
+
+		auto end = std::chrono::system_clock::now();
+
+		for (int i=0;i< m_objectCount;i++)
+			AIobjects[i] = m_Objects[i];
+
+
+		frameCount++;
+
+		if (frameCount % 30 == 0) {
+			std::cout << " FPS = " << 1000. / (g_elapsedSum.count() / 30.) << " ( min / max = " << (1000. / g_elapsedMin.count()) << " , " << (1000. / g_elapsedMax.count()) << "\n";
+			g_elapsedSum = duration(0);
+			g_elapsedMax = duration(0);
+			g_elapsedMin = duration(100000);
+
+			frameCount = 0;
+		}
+
+		return m_objectCount;
+
+	}
 
 	// DDEBUG DDEBUG functions:
 	void algoProcess::fakeCallBack(int m_videoIndex, ALGO_DETECTION_OBJECT_DATA* pObjects, int m_objectCount, void* ptr, int something)

@@ -12,7 +12,7 @@
   ===========================================================================================*/
 class algoProcess {
 public:
-	bool init(int video_index, int width, int height, int image_size, int pixelWidth);
+	bool init(int video_index, int width, int height, int image_size, int pixelWidth, char * cameraConfig);
 	bool terminate();
 	void setCallback(CameraAICallback callback);
 	void setDrawFlag(int youDraw) { m_youDraw = youDraw; }
@@ -26,6 +26,7 @@ public:
 	  ---------------------------------------------------------------------*/
 	int run(TSBuffQueue* bufQ);
 	int run_th(TSBuffQueue* bufQ);
+	int run_sync(void* pData, int frameNum, ALGO_DETECTION_OBJECT_DATA* AIobjects);
 	// getters
 
 private:

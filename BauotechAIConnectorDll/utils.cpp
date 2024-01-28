@@ -899,6 +899,57 @@ std::string FILE_UTILS::find_fname(const std::string  filename)
 		  ratio = 1. / ratio;
 	  return (ratio >= absRatio );
   }
+
+
+
+  int depth2cvType(int depth)
+  {
+	  switch (depth) {
+	  case 1:
+		  return  CV_8UC1;
+		  break;
+	  case 2:
+		  return  CV_8UC2;
+		  break;
+	  case 3:
+		  return  CV_8UC3;
+		  break;
+	  case 4:
+		  return  CV_8UC4;
+		  break;
+	  }
+  }
+
+  cv::Mat converPTR2MAT(void* data, int height, int width, int depth)
+  {
+	  	cv::Mat frameBGR;
+		cv::Mat frameRaw = cv::Mat(height, width, depth2cvType(depth), data);
+		if (frameRaw.empty()) {
+			std::cout << "read() got an EMPTY frame\n";
+			return frameBGR;
+		}
+
+		//Convert to operational format = BGR
+		//------------------------------------
+		if (frameRaw.channels() == 4) {
+			cv::cvtColor(frameRaw, frameBGR, cv::COLOR_BGRA2BGR);
+		}
+		else if (frameRaw.channels() == 2) {
+			// COLOR_YUV2BGR_Y422  COLOR_YUV2BGR_UYNV  COLOR_YUV2BGR_UYVY COLOR_YUV2BGR_YUY2 COLOR_YUV2BGR_YUYV COLOR_YUV2BGR_YVYU 
+			//cv::cvtColor(frameRaw, m_frameOrg, cv::COLOR_YUV2BGR_Y422);
+			cv::Mat mYUV(height + height / 2, width, CV_8UC1, data);
+			//cv::Mat mRGB(m_height, m_width, CV_8UC3);
+			frameBGR = cv::Mat(height, width, CV_8UC3);
+			cvtColor(mYUV, frameBGR, cv::COLOR_YUV2BGR_YV12, 3);
+		}
+		else
+			frameBGR = frameRaw; // ?? 
+
+
+
+		return frameBGR;
+  }	
+  
 #if 0
   // cv::Rect (12f) utils :
   cv::Rect extendBBox(cv::Rect rect_, cv::Point p)
