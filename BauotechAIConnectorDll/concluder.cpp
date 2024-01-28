@@ -35,8 +35,8 @@ void CDecipher::add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection
 			matchInds.push_back(ind);
 		}
 		else {
-			newObj.m_ID = m_UniqueID++;
 			// New object (vector of objects along time)
+			newObj.m_ID = m_UniqueID++;
 			m_objects.push_back(std::vector <CObject>());
 			m_objects.back().push_back(newObj);
 		}
@@ -49,6 +49,7 @@ void CDecipher::add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection
 
 		int ind = bestMatch(Yobj.box, 0.3);
 		if (ind >= 0) {
+			newObj.m_ID = m_objects[ind].back().m_ID;
 			m_objects[ind].push_back(newObj);
 			matchInds.push_back(ind);
 		}
@@ -64,11 +65,11 @@ void CDecipher::add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection
 		//m_objects.back().back().m_finalLabel = calcFinalLable(m_objects.back());
 	}
 
+
+	if (frameNum == 88)
+		int debug = 10;
+
 	int rem = pruneObjects();
-	/*
-	if (m_debugLevel > 2 && rem > 0)
-		std::cout << "Number of pruned (elders) object = " << rem << "\n";  //int debug = 10;
-	*/
 
 }
 
@@ -396,14 +397,18 @@ inline bool CDecipher::isLarge(std::vector <CObject> obj)
 
 
 
+/*----------------------------------------------------------------
+ * Prune objects that are too old (not detected for a long time)
+ -----------------------------------------------------------------*/		
 int CDecipher::pruneObjects()
 {
 	int orgSize = m_objects.size();
 	// Remove un-detected objects (fade)
 	for (int i = 0; i < m_objects.size(); i++) {
-		int expiredLen = (m_objects[i].back().m_label == Labels::person) ? CONCLUDER_CONSTANTS::MAX_PERSON_HIDDEN_FRAMES : CONCLUDER_CONSTANTS::MAX_OTHERS_HIDDEN_FRAMES;
-		if (m_frameNum - m_objects[i].back().m_frameNum > expiredLen)
+		if (m_frameNum - m_objects[i].back().m_frameNum > CONCLUDER_CONSTANTS::MAX_HIDDEN_FRAMES) {
+			//if (m_objects[i].back().m_ID == 7)  int debug = 10;
 			m_objects.erase(m_objects.begin() + i--);
+		}
 	}
 
 	return orgSize - m_objects.size();
@@ -423,13 +428,12 @@ std::vector <CObject> CDecipher::getSirenObjects(float scale)
 {
 	std::vector <CObject> scaledDetectedObjects, sirenObjects;
 
-
-
-
 	// Scale back to origin dimensions is required
 	for (auto obj : m_detectedObjects) {
-		scaledDetectedObjects.push_back(obj);
-		scaledDetectedObjects.back().m_bbox = scaleBBox(obj.m_bbox, scale);
+		if (!isHidden(obj)) {
+			scaledDetectedObjects.push_back(obj);
+			scaledDetectedObjects.back().m_bbox = scaleBBox(obj.m_bbox, scale);
+		}
 	}
 
 	for (auto alert : m_alerts) {

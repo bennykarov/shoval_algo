@@ -12,8 +12,8 @@ namespace CONCLUDER_CONSTANTS
 	const int MAX_MOTION_PER_FRAME = 20;//  10;
 	const int GOOD_TRACKING_LEN = 20;
 	const int INHERIT_LABEL_LEN  = 30 * 1; //  1 sec
-	const int MAX_OTHERS_HIDDEN_FRAMES = 4;
-	const int MAX_PERSON_HIDDEN_FRAMES = 4;
+	const int MAX_HIDDEN_FRAMES = 2; // 4;
+	const int MAX_PERSON_HIDDEN_FRAMES = MAX_HIDDEN_FRAMES; 
 }
 
 cv::Point2f center(cv::Rect r);
@@ -51,6 +51,8 @@ private:
 	bool isMoving(std::vector <CObject> obj);
 	bool isStatic(std::vector <CObject> obj);
 	bool isLarge(std::vector <CObject> obj);
+	bool isHidden(std::vector <CObject> obj) { return obj.back().m_frameNum < m_frameNum; }
+	bool isHidden(CObject obj) { return obj.m_frameNum < m_frameNum; }
 
 private:
 	int match(std::vector <cv::Rect>);
