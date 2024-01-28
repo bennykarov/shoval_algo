@@ -42,7 +42,7 @@
 #include "algoDetection.hpp"
 
 #define MAX_PERSON_DIM	cv::Size(40, 90) // DDEBUG CONST
-
+#define OLD_ROI true
 
 
 #ifdef _DEBUG
@@ -95,6 +95,17 @@ namespace  ALGO_DETECTOPN_CONSTS {
 ---------------------------------------------------------------------------------------------*/
 
 const std::vector<cv::Scalar> colors = { cv::Scalar(255, 255, 0), cv::Scalar(0, 255, 0), cv::Scalar(0, 255, 255), cv::Scalar(255, 0, 0) };
+
+void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA* pObjects)
+{
+	pObjects->ID = cObject.m_ID;
+	pObjects->X = cObject.m_bbox.x;
+	pObjects->Y = cObject.m_bbox.y;
+	pObjects->Width = cObject.m_bbox.width;
+	pObjects->Height = cObject.m_bbox.height;
+
+	pObjects->ObjectType = cObject.m_label;
+}
 
 
 void setConfigDefault(Config &params)
@@ -166,35 +177,6 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 }
 
 
-	int depth2cvType(int depth)
-	{
-		switch (depth) {
-		case 1:
-			return  CV_8UC1;
-			break;
-		case 2:
-			return  CV_8UC2;
-			break;
-		case 3:
-			return  CV_8UC3;
-			break;
-		case 4:
-			return  CV_8UC4;
-			break;
-		}
-	}
-
-
-	void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA* pObjects)
-	{
-		pObjects->ID = cObject.m_ID;
-		pObjects->X = cObject.m_bbox.x;
-		pObjects->Y = cObject.m_bbox.y;
-		pObjects->Width = cObject.m_bbox.width;
-		pObjects->Height = cObject.m_bbox.height;
-
-		pObjects->ObjectType = cObject.m_label;
-	}
 
 	int personsDetected(std::vector<YDetection> outputs)
 	{
@@ -265,8 +247,8 @@ bool CDetector::InitGPU()
 }
 
 
-bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisplay)
-	{
+bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraConfig, float scaleDisplay)
+{
 		m_width = w;
 		m_height = h;
 		m_colorDepth = imgSize / (w*h);
@@ -287,29 +269,31 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 
 		// Handle ROI and active polygons:
 		//-------------------------------
-		if (m_params.camROI[2] > 0 && m_params.camROI[3] > 0 && m_params.camROI[0] + m_params.camROI[2] < w && m_params.camROI[1] + m_params.camROI[3] < h) {
-			m_camROI = cv::Rect(m_params.camROI[0], m_params.camROI[1], m_params.camROI[2], m_params.camROI[3]);
-		}
-		else
-			m_camROI = cv::Rect(0, 0, w, h);
-
 		int cameraIndex = 0;
-		int camCount = readCamerasJson(CONSTANTS::CAMERAS_FILE_NAME, m_camerasInfo , cameraIndex);
-		CHECK_exception(camCount > 0, std::string("Error , No camera.jeson was found in " + CONSTANTS::CAMERAS_FILE_NAME).c_str());
+		int camCount = readCamerasJson(cameraConfig, m_camerasInfo , cameraIndex);
+		CHECK_exception(camCount > 0, std::string("Error , No camera.jeson was found in " + std::string(cameraConfig)).c_str());
 
-		// Fix points to ROI
-		/* TBD
-			cv::Rect ployROI = cv::boundingRect(m_camerasInfo[0].m_polyPoints);
-			for (auto& point : m_camerasInfo[0].m_polyPoints)
-				point -= ployROI.tl();
-		*/
-		for (auto& point : m_camerasInfo[0].m_polyPoints)
-			point -= m_camROI.tl();
+		if (OLD_ROI) //* OLD ROI setting from config file 
+		{
+			if (m_params.camROI[2] > 0 && m_params.camROI[3] > 0 && m_params.camROI[0] + m_params.camROI[2] < w && m_params.camROI[1] + m_params.camROI[3] < h) {
+				m_camROI = cv::Rect(m_params.camROI[0], m_params.camROI[1], m_params.camROI[2], m_params.camROI[3]);
+			}
+			else
+				m_camROI = cv::Rect(0, 0, w, h);
+		}
+		else // NEW camROI using polygon points:
+		{
+			// Set ROI according to Polygon + Fix points to ROI
+			if (m_camerasInfo[0].m_polyPoints.empty())
+				m_camROI = cv::Rect(0, 0, w, h);
+			else {
+				m_camROI = cv::boundingRect(m_camerasInfo[0].m_polyPoints);  // DDEBUG missing Cam ID
+				for (auto& point : m_camerasInfo[0].m_polyPoints)
+					point -= m_camROI.tl();
+			}
+		}
 
-			
-		//m_decipher.set(m_camerasInfo[0].m_polyPoints, m_camerasInfo[0].m_label, m_camerasInfo[0].m_maxAllowed); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
-
-		for (auto camInf : m_camerasInfo) {
+			for (auto camInf : m_camerasInfo) {
 			if (camInf.m_camID == 0) // currently only one camera is supported !!
 				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_maxAllowed); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
 
@@ -389,11 +373,10 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		m_Youtput.clear();
 		if (timeForDetection()) {
 			m_yolo.detect(frame, m_Youtput);
-			if (m_params.debugLevel > 2 && personsDetected(m_Youtput))
-				Beep(900, 10);// DDEBUG 			
 		}
-		if (m_Youtput.size() > 1)
-			int debug = 10;
+		
+		if (m_Youtput.size() > 0)
+			std::cout << "Yolo detect objects = " << m_Youtput.size() << "\n";
 
 		m_decipher.add(m_BGSEGoutput, m_Youtput, m_frameNum); // add & match
 
@@ -404,14 +387,14 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 			cv::imshow("m_bgMask", m_bgMask);
 
 		int tracked_count;
-		tracked_count = m_BGSEGoutput.size();
+		tracked_count = m_decipher.getObjects(-1, Labels::car).size();
+		//tracked_count = m_BGSEGoutput.size();
 		return tracked_count;
 	}
 
 
 
-
-	int CDetector::process(void* dataOrg, ALGO_DETECTION_OBJECT_DATA* pObjects)
+	int CDetector::process(cv::Mat frameRaw, ALGO_DETECTION_OBJECT_DATA* pObjects)
 	{
 		std::vector <CObject>	sirenObjs;
 
@@ -419,60 +402,7 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		//pObjects->frameNum = m_frameNum;
 		pObjects->ObjectType = -1;
 
-		m_data = dataOrg; // No buffering - use original buffer for processing 
-
-		// Convert image PTR to opencv MAT
-		cv::Mat frameRaw = cv::Mat(m_height, m_width, depth2cvType(m_colorDepth), m_data);
-		if (frameRaw.empty()) {
-			std::cout << "read() got an EMPTY frame\n";
-			ERROR_BEEP();
-			return -1;
-		}
-
-		//Convert to operational format = BGR
-		//------------------------------------
-		if (frameRaw.channels() == 4) {
-			cv::cvtColor(frameRaw, m_frameOrg, cv::COLOR_BGRA2BGR);
-		}
-		else if (frameRaw.channels() == 2) {
-			// COLOR_YUV2BGR_Y422  COLOR_YUV2BGR_UYNV  COLOR_YUV2BGR_UYVY COLOR_YUV2BGR_YUY2 COLOR_YUV2BGR_YUYV COLOR_YUV2BGR_YVYU 
-			//cv::cvtColor(frameRaw, m_frameOrg, cv::COLOR_YUV2BGR_Y422);
-			cv::Mat mYUV(m_height + m_height / 2, m_width, CV_8UC1, (void*)m_data);
-			//cv::Mat mRGB(m_height, m_width, CV_8UC3);
-			m_frameOrg = cv::Mat(m_height, m_width, CV_8UC3);
-			cvtColor(mYUV, m_frameOrg, cv::COLOR_YUV2BGR_YV12, 3);
-			int debug = 10;
-		}
-		else
-			m_frameOrg = frameRaw; // ??
-
-#if 1
-		if (0) // TEST YUV FORMATS:
-		{
-			std::vector <int> Convert_gray = { cv::COLOR_YUV2GRAY_YV12,cv::COLOR_YUV2GRAY_IYUV, cv::COLOR_YUV2GRAY_NV21, cv::COLOR_YUV2GRAY_NV12 , \
-				 cv::COLOR_YUV2GRAY_I420, cv::COLOR_YUV2GRAY_IYUV, cv::COLOR_YUV420sp2GRAY,  cv::COLOR_YUV420p2GRAY  };
-
-			cv::Mat mYUV(m_height + m_height / 2, m_width, CV_8UC1, (void*)m_data);
-			//cv::Mat mRGB(m_height, m_width, CV_8UC3);
-			cv::Mat mGray(m_height, m_width, CV_8UC1);
-			for (auto conv : Convert_gray) {
-				cvtColor(mYUV, mGray, conv, 1);
-				int debug = 10;
-			}
-
-
-
-			std::vector <int> Convert_color = { cv::COLOR_YUV2BGR_NV12,  cv::COLOR_YUV2BGR_NV21, cv::COLOR_YUV2BGR_YV12,  cv::COLOR_YUV2BGR_IYUV };
-
-			cv::Mat mBGR(m_height, m_width, CV_8UC3);
-			for (auto conv : Convert_color) {
-				cvtColor(mYUV, mBGR, conv, 3);
-				int debug = 10;
-			}
-		}
-
-#endif 
-
+		m_frameOrg = frameRaw; // ?? 
 
 		m_frameROI = m_frameOrg(m_camROI);
 
@@ -485,15 +415,71 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, float scaleDisp
 		if (objects_tracked > 1)
 			int debug = 10;
 
-		/*
-		pObjects->reserved1_personsCount = m_decipher.getPersonObjects(m_frameNum).size();
-		pObjects->reserved2_motion = objects_tracked; //  m_motionDetectet ? 1 : 0;
-		*/
+		if (m_decipher.getObjects(m_frameNum).size() > 0) {
+			if (OLD_ROI) // DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG 
+				sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale);
+			else {
+				sirenObjs = m_decipher.getObjects(m_frameNum);
 
+				// scale back to original image size:
+				for (auto& obj : sirenObjs) {
+					obj.m_bbox = scaleBBox(obj.m_bbox, 1. / m_params.scale);
+					obj.m_bbox.x += m_camROI.x;
+					obj.m_bbox.y += m_camROI.y;
+				}
+			}
+			
+
+
+
+			for (int k = 0; k < sirenObjs.size(); k++)
+				cObject_2_pObject(sirenObjs[k], &pObjects[k]);
+		}
+
+#if 0
+		if (doDrawing) {
+			// Draw overlays :
+			//draw(m_frameOrg, m_Youtput , 1.0 / m_params.scale);
+			if (m_params.showMotion)
+				draw(m_frameOrg, m_BGSEGoutput, 1.0 / m_params.scale);
+
+			draw(m_frameOrg, sirenObjs, 1.0 / m_params.scale);
+			drawInfo(m_frameOrg);
+		}
+#endif 
+		m_frameNum++;
+
+
+		return sirenObjs.size();
+	}
+
+	int CDetector::process(void* dataOrg, ALGO_DETECTION_OBJECT_DATA* pObjects)
+	{
+		std::vector <CObject>	sirenObjs;
+
+
+		//pObjects->frameNum = m_frameNum;
+		pObjects->ObjectType = -1;
+
+		m_data = dataOrg; // No buffering - use original buffer for processing 
+
+		// Convert image PTR to opencv MAT
+		//------------------------------------
+		m_frameOrg = converPTR2MAT(m_data, m_height, m_width, m_colorDepth);
+ 
+		m_frameROI = m_frameOrg(m_camROI);
+
+		cv::resize(m_frameROI, m_frame, cv::Size(0, 0), m_params.scale, m_params.scale); // performance issues 
+
+		int objects_tracked = 0;
+
+		objects_tracked = processFrame(m_frame);
+
+		if (objects_tracked > 1)
+			int debug = 10;
 
 		if (m_decipher.getObjects(m_frameNum).size() > 0) {
 			sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale);
-
 
 
 			//if (sirenObjs.size() > 0) 

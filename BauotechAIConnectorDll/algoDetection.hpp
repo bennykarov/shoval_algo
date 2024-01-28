@@ -37,9 +37,10 @@ enum STAGE {
 
 class CDetector {
 public:
-	bool init(int w, int h, int imgSize, int pixelWidth, float scaleDisplay = 0.5);
+	bool init(int w, int h, int imgSize, int pixelWidth,  char * cameraConfig, float scaleDisplay = 0.5);
 	bool InitGPU();
-	int process(void *dataTemp, ALGO_DETECTION_OBJECT_DATA *pObjects);
+	int process(void* dataTemp, ALGO_DETECTION_OBJECT_DATA* pObjects);
+	int process(cv::Mat frame, ALGO_DETECTION_OBJECT_DATA* pObjects);
 	int processFrame(cv::Mat &frame);
 	/*
 	void draw_old(cv::Mat& img, float scale);   // by Concluder (good objects)
