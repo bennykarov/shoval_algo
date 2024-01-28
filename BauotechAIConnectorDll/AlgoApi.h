@@ -84,8 +84,8 @@ extern "C" {
 		ALGO_DETECTION_OBJECT_DATA* pObjects,
 		uint32_t *objectCount);
 
-	//API_EXPORT void BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
-	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int frameNum, ALGO_DETECTION_OBJECT_DATA* pObjects);
+	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
+	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData2(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects, int frameNum);
 
 	API_EXPORT int BauotechAlgoConnector_Run2(BAUOTECH_AND_BENNY_KAROV_ALGO algo,
 										     uint8_t* pData,
@@ -106,9 +106,11 @@ extern "C" {
 											    uint32_t pixelWidth,
 											    uint32_t image_size,
 											    uint8_t youDraw,
-												CameraAICallback callback);
+												CameraAICallback callback,
+												char* cameraConfig);
 										  
-	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber );
+	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber);
+	API_EXPORT int BauotechAlgoConnector_Run3_sync(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA* AIObjects, uint64_t frameNumber);
 
 
 	API_EXPORT void BauotechAlgoConnector_Init();

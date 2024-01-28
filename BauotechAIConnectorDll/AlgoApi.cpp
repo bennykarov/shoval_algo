@@ -14,7 +14,6 @@
 
 
 //const int MaxVideos = 10;
-CDetector g_tracker;
 TSBuffQueue g_bufQ;
 /*
 const int bufferLen = 10;
@@ -88,6 +87,21 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int 
 
 }
 
+API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData2(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects, int desiredFrameNum)
+{
+	int frameNum, objectsCount = 0, tries = 10;
+
+	do {
+		objectsCount = g_algoProcess[videoIndex].getObjectData(videoIndex, index, pObjects, frameNum);
+		Sleep(2);	
+		std::cout << " wait for Detection proper frame \n";
+	} while (--tries > 0 && frameNum != desiredFrameNum);
+
+	return (tries > 0 ?  objectsCount : 0);
+
+
+}
+
 API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, ALGO_DETECTION_OBJECT_DATA* pObjects, uint32_t* objectCount)
 {
 	int frameNum;
@@ -110,6 +124,15 @@ API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, u
 
 }
 
+/*-------------------------------------------------------------------------------------------------------------------
+*  Sync version of run3()
+ -------------------------------------------------------------------------------------------------------------------*/
+API_EXPORT int BauotechAlgoConnector_Run3_sync(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA *AIObjects, uint64_t frameNumber)
+{
+
+	return g_algoProcess[videoIndex].run_sync(pData, frameNumber, AIObjects);
+
+}
 
 
 
@@ -120,7 +143,8 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 											uint32_t pixelWidth,
 											uint32_t image_size,
 											uint8_t youDraw,
-											CameraAICallback callback)
+											CameraAICallback callback,
+											char *cameraConfig)
 {
 
 	int bufSize = 10;
@@ -128,7 +152,7 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 	// Init Queue 
 	g_bufQ.set(width, height, pixelWidth, bufSize);
 	// Init Algo thread
-	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth))
+	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth, cameraConfig))
 		return -1;
 	// init callback function 
 	g_algoProcess[videoIndex].setCallback(callback);
