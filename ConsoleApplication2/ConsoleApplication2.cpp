@@ -309,11 +309,13 @@ int main(int argc, char* argv[])
 	std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjectVec;
 	ALGO_DETECTION_OBJECT_DATA AIObjects[MAX_CAMERAS][10];
 
+	int videosNum = 1; // DDEBUG 
+	videosNum = MIN(videosNum, MAX_CAMERAS);
 	int frameNum = 0;
 	int skipFrames = 0;
 	std::string videoName;
 	uint32_t videoIndex = 0;
-	int videosNum = 3;
+	int videoTodisplayInd = 0;
 
 
 	if (argc < 2) {
@@ -472,16 +474,15 @@ int main(int argc, char* argv[])
 		//      DRAW RESULTS :
 		//----------------------------------------
 		// Convert list to vector
-		videoIndex = 1; // --> Choose video to show
 
 		AIObjectVec.clear();
-		for (int i = 0; i < objectsDetected[videoIndex]; i++)
+		for (int i = 0; i < objectsDetected[videoTodisplayInd]; i++)
 			AIObjectVec.push_back(AIObjects[videoIndex][i]);
 
 		if (DrawDetections == 2)
-			key = draw(height, width, (char*)pData[videoIndex], AIObjectVec, frameNum);
+			key = draw(height, width, (char*)pData[videoTodisplayInd], AIObjectVec, frameNum);
 		else if (DrawDetections == 1)
-			key = draw(height, width, (char*)pData[videoIndex], std::vector <ALGO_DETECTION_OBJECT_DATA>(), frameNum);
+			key = draw(height, width, (char*)pData[videoTodisplayInd], std::vector <ALGO_DETECTION_OBJECT_DATA>(), frameNum);
 
 
 		//------------------
