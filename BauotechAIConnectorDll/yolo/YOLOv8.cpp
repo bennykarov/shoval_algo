@@ -183,35 +183,6 @@ Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& c
     return input_image;
 }
 
-
-//int main()
-//{
-//    // Load class list.
-//    vector<string> class_list = load_class_list();;
-//    Mat frame;
-//    Net net;
-//    bool is_cuda = false;
-//    load_net(net, is_cuda);
-//    vector<Mat> detections;
-//    frame = imread("Resources/traffic1.jpg");
-//    detections = pre_process(frame, net);
-//    //cout << "number of detections : " << detections.size() << endl;
-//    Mat img = post_process(frame, detections, class_list);
-//    //// Put efficiency information.
-//    //// The function getPerfProfile returns the overall time for     inference(t) and the timings for each of the layers(in layersTimes).
-//    vector<double> layersTimes;
-//    double freq = getTickFrequency() / 1000;
-//    double t = net.getPerfProfile(layersTimes) / freq;
-//    string label = format("Inference time : %.2f ms", t);
-//    putText(img, label, Point(20, 40), FONT_FACE, FONT_SCALE, RED);
-//
-//    imshow("output", img);
-//    waitKey(0);
-//
-//    return 0;
-//}
-
-
 int main_yolo8()
 {
     // Load class list.
@@ -304,19 +275,12 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
 
 
     detections = pre_process(frame, m_net);
-    //cout << "number of detections : " << detections.size() << endl;
-    
-    //Mat img = post_process(frame, detections, m_class_list);
-    //Mat post_process(Mat & input_image, vector<Mat>&outputs, const vector<string>&class_name)
 
     // TEMP CONVERT PARAMS
     cv::Mat input_image = frame;
     std::vector<cv::Mat>  outputs = detections;
 
-
-
     // Initialize vectors to hold respective outputs while unwrapping     detections.
-
     int rows = outputs[0].size[2];
     int dimensions = outputs[0].size[1];
 
