@@ -33,7 +33,7 @@ float   g_elapsedMax = 0;
 
 		int badImageSize = imageSize();
 
-		bool ok = m_tracker.init(m_width, m_height, image_size, m_pixelWidth, cameraConfig, m_scale/*0.5*/);
+		bool ok = m_tracker.init(video_index, m_width, m_height, image_size, m_pixelWidth, cameraConfig, m_scale/*0.5*/);
 
 		m_timer.start();
 		return ok;
@@ -125,16 +125,16 @@ float   g_elapsedMax = 0;
 
 
 			if (m_frameNum % 60 == 0)
-				std::cout << "duration: " << elapsed << " milliseconds" << std::endl;
-			//else if (elapsed > 33)	std::cout << "long duration: " << elapsed << " milliseconds" << std::endl;
+				std::cout << "Algo duration: " << elapsed << " milliseconds" << std::endl;
 
 			
 
 
 			// DDEBUG : for getbjectData() API  
 			//---------------------------------------
-			if (0) {
-				std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);
+			bool supportGetbjectData = true; // DDEBUG
+			if (supportGetbjectData) {
+ 				std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);
 				m_pObjectsAPI.clear();
 				for (int i = 0; i < m_objectCount; i++)
 					m_pObjectsAPI.push_back(m_Objects[i]); 
