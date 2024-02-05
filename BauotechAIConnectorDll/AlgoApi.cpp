@@ -13,8 +13,14 @@
 #include "algoProcess.hpp"
 
 
-//const int MaxVideos = 10;
-TSBuffQueue g_bufQ;
+typedef struct tagRGB32TRIPLE {
+	BYTE    rgbtBlue;
+	BYTE    rgbtGreen;
+	BYTE    rgbtRed;
+	BYTE    rgb0;
+} RGB32TRIPLE;
+
+
 /*
 const int bufferLen = 10;
 boost::circular_buffer<CframeBuffer> g_bufQ2(bufferLen);
@@ -33,20 +39,9 @@ CameraRequestCallback gCameraRequestCallback = nullptr; // moved from header fil
 
 std::unordered_map<uint32_t, CameraAICallback> gAICllbacks;
 
-
-typedef struct tagRGB32TRIPLE {
-	BYTE    rgbtBlue;
-	BYTE    rgbtGreen;
-	BYTE    rgbtRed;
-	BYTE    rgb0;
-} RGB32TRIPLE;
-
-
-//std::unordered_map<uint32_t, ALGO_DETECTION_OBJECT_DATA> gAlgoObjects;
-//std::unordered_map <uint32_t , VideoInfo>  gVideoInfo;
-
 // GLOBAL :
 algoProcess   g_algoProcess[MAX_VIDEOS];
+TSBuffQueue g_bufQ[MAX_VIDEOS];
 //uint32_t g_frameNumbers[MAX_VIDEOS];
 
 
@@ -119,7 +114,7 @@ API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, u
 	//frameNumber = g_frameNumbers[videoIndex]; // count frames inside function, should be counted in caller function!
 	//g_frameNumbers[videoIndex] = frameNumber;
 	//std::cout << "IN frameNumber = " << frameNumber << "\n";	
-	bool ok = g_bufQ.push(CframeBuffer(frameNumber, (char*)pData));
+	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, (char*)pData));
 	g_algoProcess[videoIndex].WakeUp();
 	//std::cout << "Wakeup" << "\n";	
 	
@@ -153,7 +148,7 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 	int bufSize = 10;
 		
 	// Init Queue 
-	g_bufQ.set(width, height, pixelWidth, bufSize);
+	g_bufQ[(int)videoIndex].set(width, height, pixelWidth, bufSize);
 	// Init Algo thread
 	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth, cameraConfig))
 		return -1;
@@ -165,7 +160,7 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 		frameNum = 0;*/
 
 	// Run Algo thread
-	g_algoProcess[videoIndex].run(&g_bufQ);
+	g_algoProcess[videoIndex].run(&g_bufQ[(int)videoIndex]);
 	return 1;
 }
  
@@ -183,18 +178,10 @@ API_EXPORT int BauotechAlgoConnector_Config_sync(uint32_t videoIndex,
 	int bufSize = 10;
 
 	// Init Queue 
-	g_bufQ.set(width, height, pixelWidth, bufSize);
-	// Init Algo thread
 	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth, cameraConfig))
 		return -1;
-	// init callback function 
-	g_algoProcess[videoIndex].setCallback(callback);
-	g_algoProcess[videoIndex].setDrawFlag(int(youDraw));
 
-	/*for (auto &frameNum : g_frameNumbers)
-		frameNum = 0;*/
-
-		// Run Algo thread
+	// Run Algo thread
 	//g_algoProcess[videoIndex].run(&g_bufQ);
 	return 1;
 }
