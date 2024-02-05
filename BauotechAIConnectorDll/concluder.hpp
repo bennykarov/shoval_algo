@@ -12,7 +12,7 @@ namespace CONCLUDER_CONSTANTS
 	const int MAX_MOTION_PER_FRAME = 20;//  10;
 	const int GOOD_TRACKING_LEN = 20;
 	const int INHERIT_LABEL_LEN  = 30 * 1; //  1 sec
-	const int MAX_HIDDEN_FRAMES = 2; // 4;
+	const int MAX_HIDDEN_FRAMES = 4; // 4;
 	const int MAX_PERSON_HIDDEN_FRAMES = MAX_HIDDEN_FRAMES; 
 }
 
@@ -21,7 +21,8 @@ cv::Point2f center(cv::Rect r);
 class CDecipher {
 public:
 	void init(int debugLevel);
-	void setPersonDim(cv::Size dim) { m_maxPresonDim = dim;} // max person size in pixels
+	void setPersonDim(cv::Size dim) { m_maxPresonDim = dim; } // max person size in pixels
+	void setObjectDim(cv::Size dim) { m_maxObjectDim = dim; } // max person size in pixels
 	void add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum);
 	void add(std::vector <YDetection> YoloOutput,int frameNum);
 	int track();
@@ -40,7 +41,6 @@ public:
 	void	set(std::vector<cv::Point> contour, int label, int max_allowed)
 	{
 		m_alerts.push_back(CAlert(contour, label, max_allowed));
-		//m_alert.set(contour, label, max_allowed);
 	}
 
 	int Siren();
@@ -53,6 +53,7 @@ private:
 	bool isLarge(std::vector <CObject> obj);
 	bool isHidden(std::vector <CObject> obj) { return obj.back().m_frameNum < m_frameNum; }
 	bool isHidden(CObject obj) { return obj.m_frameNum < m_frameNum; }
+	bool hiddenLen(CObject obj) { return  m_frameNum - obj.m_frameNum ; }
 
 private:
 	int match(std::vector <cv::Rect>);
@@ -77,7 +78,8 @@ private:
 
 	int m_idCounter = 0;
 	bool m_active = false;
-	cv::Size m_maxPresonDim = cv::Size(150 ,200); // DDEBUG CONST 
+	cv::Size m_maxPresonDim = cv::Size(150, 200); // DDEBUG CONST 
+	cv::Size m_maxObjectDim = cv::Size(350, 350); // DDEBUG CONST 
 	cv::Size m_dim;
 	int m_frameNum;
 	int m_debugLevel = 0;

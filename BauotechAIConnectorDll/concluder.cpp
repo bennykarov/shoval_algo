@@ -6,7 +6,7 @@
 
 
 #include "CObject.hpp"
-#include "yolo/yolo5.hpp"
+#include "yolo/yolo.hpp"
 
 #include "utils.hpp"
 #include "concluder.hpp"
@@ -392,7 +392,7 @@ bool CDecipher::isStatic(std::vector <CObject> obj)
 
 inline bool CDecipher::isLarge(std::vector <CObject> obj)
 {
-	return (obj.back().m_bbox.width > m_maxPresonDim.width || obj.back().m_bbox.height > m_maxPresonDim.height);
+	return (obj.back().m_bbox.width > m_maxObjectDim.width || obj.back().m_bbox.height > m_maxObjectDim.height);
 }
 
 
@@ -430,7 +430,7 @@ std::vector <CObject> CDecipher::getSirenObjects(float scale)
 
 	// Scale back to origin dimensions is required
 	for (auto obj : m_detectedObjects) {
-		if (!isHidden(obj)) {
+		if (!hiddenLen(obj) < 3) {
 			scaledDetectedObjects.push_back(obj);
 			scaledDetectedObjects.back().m_bbox = scaleBBox(obj.m_bbox, scale);
 		}
