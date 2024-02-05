@@ -44,7 +44,7 @@ private:
 
 	std::mutex m_BufferMutex;
 
-	bool m_terminate = false;
+	std::atomic_bool m_terminate = false;
 	int m_frameNum = -1;
 	int m_videoIndex;
 
