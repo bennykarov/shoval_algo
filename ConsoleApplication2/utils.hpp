@@ -53,5 +53,7 @@ public:
 int readCamerasJson(std::string fname, int camID, std::vector <CAlert_>& cameras);
 void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale);
 
+std::string toUpper(std::string str);
+
 
 #endif 

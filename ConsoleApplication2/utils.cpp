@@ -100,3 +100,10 @@ void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale)
     //if (cv::iscorrect(contour)) {
     cv::drawContours(img, std::vector<std::vector<cv::Point> >(1, contour), -1, color, 1, 8);
 }
+
+
+std::string toUpper(std::string str)
+{
+    std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+    return str;
+}
