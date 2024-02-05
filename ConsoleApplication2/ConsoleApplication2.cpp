@@ -3,19 +3,19 @@
 //============================================================================
 
 #ifdef _DEBUG
-#pragma comment(lib, "opencv_core480d.lib")
-#pragma comment(lib, "opencv_highgui480d.lib")
-#pragma comment(lib, "opencv_video480d.lib")
-#pragma comment(lib, "opencv_videoio480d.lib")
-#pragma comment(lib, "opencv_imgcodecs480d.lib")
-#pragma comment(lib, "opencv_imgproc480d.lib")
+#pragma comment(lib, "opencv_core470d.lib")
+#pragma comment(lib, "opencv_highgui470d.lib")
+#pragma comment(lib, "opencv_video470d.lib")
+#pragma comment(lib, "opencv_videoio470d.lib")
+#pragma comment(lib, "opencv_imgcodecs470d.lib")
+#pragma comment(lib, "opencv_imgproc470d.lib")
 #else
-#pragma comment(lib, "opencv_core480.lib")
-#pragma comment(lib, "opencv_highgui480.lib")
-#pragma comment(lib, "opencv_video480.lib")
-#pragma comment(lib, "opencv_videoio480.lib")
-#pragma comment(lib, "opencv_imgcodecs480.lib")
-#pragma comment(lib, "opencv_imgproc480.lib")
+#pragma comment(lib, "opencv_core470.lib")
+#pragma comment(lib, "opencv_highgui470.lib")
+#pragma comment(lib, "opencv_video470.lib")
+#pragma comment(lib, "opencv_videoio470.lib")
+#pragma comment(lib, "opencv_imgcodecs470.lib")
+#pragma comment(lib, "opencv_imgproc470.lib")
 #endif
 
 
@@ -28,6 +28,7 @@
 #include "utils.hpp"
 #include "../BauotechAIConnectorDll/AlgoApi.h"
 
+typedef std::chrono::duration<float, std::milli> duration;
 
 
 // GLOBALS:
@@ -52,8 +53,10 @@ void drawInfo(cv::Mat& img, CAlert_ camInfo)
 /* return cv::waitKey() */
 int draw(int height, int width, char *pData, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, int framenum)
 {
-	static int wait = 10;
+	static int wait = 1;
 	int key;
+
+	auto startGUI = std::chrono::system_clock::now();
 
 	cv::Mat frameAfter = cv::Mat(height, width, CV_8UC3, pData);
 
@@ -85,7 +88,14 @@ int draw(int height, int width, char *pData, std::vector <ALGO_DETECTION_OBJECT_
 	if (key == 'p')
 		wait = -1;
 	else
-		wait = 10;
+		wait = 1;
+
+	auto endGUI = std::chrono::system_clock::now();
+
+	if ((framenum + 5) % 30 == 0) {
+		duration GuiElapsed = endGUI - startGUI;
+		std::cout << "Gui duration = " << GuiElapsed.count() << "\n";
+	}
 
 	return key;
 } 
@@ -176,7 +186,7 @@ int main_API(int argc, char* argv[])
 	memcpy(pData, frame.data, image_size);
 
 	int key = 0;
-	int wait = 10;
+	int wait = 1;
 
 	while (frameNum < skipFrames && !frame.empty()) {
 		cap >> _frame;
@@ -205,7 +215,6 @@ int main_API(int argc, char* argv[])
 
 		ALGO_DETECTION_OBJECT_DATA AIObjects[10];
 		int objectsDetected = BauotechAlgoConnector_GetAlgoObjectData(0, 0, AIObjects);
-		//int objectsDetected = BauotechAlgoConnector_GetAlgoObjectData2(0, -1, AIObjects, frameNum);
 
 		//if (AIObjects[0].frameNum != frameNum)   std::cout << "Process Daly in : " << (frameNum - AIObjects[0].frameNum) << "frames \n";  // DDEBUG
 
@@ -234,7 +243,6 @@ int main_API(int argc, char* argv[])
 			key = draw(height, width, (char*)pData, std::vector <ALGO_DETECTION_OBJECT_DATA>(), frameNum);
 		if (key == 'q' || key == 27)
 			break;
-		
 
 		cap >> _frame;
 		if (0)  // DDEBUG TEST 
@@ -256,7 +264,8 @@ int main_API(int argc, char* argv[])
 
 		frameNum++;
 
-		if (0) // DDEBUG : Keep 30 FPS 
+#if 0
+		// DDEBUG : Keep 30 FPS 
 		{ 
 			
 			auto curr = std::chrono::system_clock::now();
@@ -269,10 +278,10 @@ int main_API(int argc, char* argv[])
 			prev = curr;
 		}  
 
+#endif 
 	}  	// while (!frame.empty())
 
 	// termination
-
 	BauotechAlgoConnector_Release();
 
 }
@@ -350,7 +359,7 @@ int main(int argc, char* argv[])
 
 	// Init
 	BauotechAlgoConnector_Init();
-	BauotechAlgoConnector_Config(videoIndex, algo, width, height, pixelWidth, image_size, youDraw, nullptr, (char*)"C:\\Program Files\\Bauotech\\cameras.json");
+	BauotechAlgoConnector_Config_sync(videoIndex, algo, width, height, pixelWidth, image_size, youDraw, nullptr, (char*)"C:\\Program Files\\Bauotech\\cameras.json");
 
 
 	pData = (uint8_t*)malloc(image_size);
@@ -365,19 +374,40 @@ int main(int argc, char* argv[])
 	}
 
 
-	auto prev = std::chrono::system_clock::now();
-
+	auto prev30 = std::chrono::system_clock::now();
+	auto prev = prev30;
+	float maxElapsed = 0;
 	//-----------------
 	// Video Main Loop
 	//-----------------
 	while (!frame.empty()) {
 		memcpy(pData, frame.data, image_size);
 		//size_t sizeTemp(frame.cols * frame.rows * 3); // 24 bit
-		youDraw = 1; // DDEBUG
-		//BauotechAlgoConnector_Run(algo, pData, width, height, pixelWidth, image_size, youDraw, pObjects, pObjectCount);
 		int videoInd = 0;
 
+
 		int objectsDetected = BauotechAlgoConnector_Run3_sync(videoInd, pData, AIObjects, frameNum); // tsQueue runner
+
+		// FPS check 
+		auto curr = std::chrono::system_clock::now();
+
+		duration elapsed = curr - prev;
+		maxElapsed = MAX(maxElapsed, elapsed.count()); // keep max delay 
+		prev = curr;
+
+		if (frameNum % 30 == 0) {
+			//auto curr = std::chrono::system_clock::now();
+			duration elapsed = curr - prev30;
+
+			std::cout << " FPS = " << 1000. / (elapsed.count() / 30.) << "\n";
+			std::cout << " Max frame duration = " << maxElapsed << "\n";
+
+			prev30 = curr;
+			maxElapsed = 0;
+
+			std::cout << objectsDetected << " Objects were detected \n";
+
+		}
 
 
 		/*
@@ -385,7 +415,10 @@ int main(int argc, char* argv[])
 		int objectsDetected = BauotechAlgoConnector_GetAlgoObjectData(0, 0, AIObjects);
 		*/
 
-		// DRAW : 
+
+		//----------------------------------------
+		//      DRAW RESULTS :
+		//----------------------------------------
 		// Convert list to vector
 		AIObjectVec.clear();
 		for (int i = 0; i < objectsDetected; i++)
@@ -393,11 +426,13 @@ int main(int argc, char* argv[])
 
 
 		// DRAW image & detections 
-		bool DrawDetections = true;
+		bool DrawDetections = false;
 
+		
 		if (DrawDetections)
 			key = draw(height, width, (char*)pData, AIObjectVec, frameNum);
-		//else  key = draw(height, width, (char*)pData, std::vector <ALGO_DETECTION_OBJECT_DATA>(), frameNum);
+		//key = draw(height, width, (char*)pData, std::vector <ALGO_DETECTION_OBJECT_DATA>(), frameNum);
+
 		if (key == 'q' || key == 27)
 			break;
 
@@ -409,13 +444,12 @@ int main(int argc, char* argv[])
 		if (frame.empty()) {
 			cap.set(cv::CAP_PROP_POS_FRAMES, 0); // start again from the beginning
 			cap >> frame;
-
 		}
 
 
 		frameNum++;
 
-		if (0) // DDEBUG : Keep 30 FPS 
+#if 0
 		{
 
 			auto curr = std::chrono::system_clock::now();
@@ -427,6 +461,7 @@ int main(int argc, char* argv[])
 
 			prev = curr;
 		}
+#endif 
 
 	}  	// while (!frame.empty())
 

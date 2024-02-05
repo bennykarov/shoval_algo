@@ -169,6 +169,37 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 	return 1;
 }
  
+API_EXPORT int BauotechAlgoConnector_Config_sync(uint32_t videoIndex,
+	BAUOTECH_AND_BENNY_KAROV_ALGO algo,
+	uint32_t width,
+	uint32_t height,
+	uint32_t pixelWidth,
+	uint32_t image_size,
+	uint8_t youDraw,
+	CameraAICallback callback,
+	char* cameraConfig)
+{
+
+	int bufSize = 10;
+
+	// Init Queue 
+	g_bufQ.set(width, height, pixelWidth, bufSize);
+	// Init Algo thread
+	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth, cameraConfig))
+		return -1;
+	// init callback function 
+	g_algoProcess[videoIndex].setCallback(callback);
+	g_algoProcess[videoIndex].setDrawFlag(int(youDraw));
+
+	/*for (auto &frameNum : g_frameNumbers)
+		frameNum = 0;*/
+
+		// Run Algo thread
+	//g_algoProcess[videoIndex].run(&g_bufQ);
+	return 1;
+}
+
+
 API_EXPORT void BauotechAlgoConnector_SetCameraRequestCallback(CameraRequestCallback callback)
 {
 	gCameraRequestCallback = callback;

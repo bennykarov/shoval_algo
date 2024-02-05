@@ -91,15 +91,25 @@ extern "C" {
  
 	 
 	API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
-											    BAUOTECH_AND_BENNY_KAROV_ALGO algo,		
-											    uint32_t width,
-											    uint32_t height,
-											    uint32_t pixelWidth,
-											    uint32_t image_size,
-											    uint8_t youDraw,
-												CameraAICallback callback,
-												char* cameraConfig);
-										  
+		BAUOTECH_AND_BENNY_KAROV_ALGO algo,
+		uint32_t width,
+		uint32_t height,
+		uint32_t pixelWidth,
+		uint32_t image_size,
+		uint8_t youDraw,
+		CameraAICallback callback,
+		char* cameraConfig);
+
+	API_EXPORT int BauotechAlgoConnector_Config_sync(uint32_t videoIndex,
+		BAUOTECH_AND_BENNY_KAROV_ALGO algo,
+		uint32_t width,
+		uint32_t height,
+		uint32_t pixelWidth,
+		uint32_t image_size,
+		uint8_t youDraw,
+		CameraAICallback callback,
+		char* cameraConfig);
+
 	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber);
 	API_EXPORT int BauotechAlgoConnector_Run3_sync(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA* AIObjects, uint64_t frameNumber);
 
