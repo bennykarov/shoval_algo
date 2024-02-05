@@ -85,7 +85,7 @@ bool similarAreas(cv::Rect r1, cv::Rect r2, float absRatio);
 #define TICKFREQUENCY 1000.
 
 
-class CTimer {
+class CTimer_ {
 public:
 	double  start() { m_start_time = m_cur_time = (double)GetTickCount(); return m_start_time / TICKFREQUENCY; }
 	double  sample() { m_prev_time = m_cur_time;  m_cur_time = (double)GetTickCount(); return (m_cur_time - m_prev_time)  / TICKFREQUENCY; }
@@ -102,6 +102,32 @@ private:
 	double m_cur_time;
 };
 
+class CTimer {
+public:
+	void  start() {
+		m_start_time = m_cur_time = std::chrono::system_clock::now();
+	}
+	double  sample__() { m_prev_time = m_cur_time;  m_cur_time = std::chrono::system_clock::now(); return (m_cur_time - m_prev_time).count(); }
+	double  sample()
+	{
+		m_cur_time = std::chrono::system_clock::now();
+
+		m_elapsed = m_cur_time - m_prev_time;
+		m_prev_time = m_cur_time;
+		return m_elapsed.count();
+	}
+
+	//double  durationFromStart() { return (m_cur_time - m_start_time).count() / 1000.; } 
+	void printDuration(std::string msg)
+	{
+		double duration = sample(); std::cout << msg << "( duration = " << duration << " )";
+	}
+
+
+private:
+	std::chrono::system_clock::time_point  m_start_time, m_prev_time, m_cur_time;
+	std::chrono::duration<float, std::milli> m_elapsed;
+};
 
  using namespace std;
 
@@ -226,3 +252,18 @@ private:
  int depth2cvType(int depth);
  cv::Mat converPTR2MAT(void* data, int height, int width, int depth);
 
+
+
+ #if 0
+ class CTimer  {
+ public:
+	 void start() {
+		 start = std::chrono::system_clock::now();
+	 }
+	 void end() {}
+	 float duration() {}
+
+ private:
+	 std::chrono::system_clock::time_point start, end;
+ };
+#endif 
