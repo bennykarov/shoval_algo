@@ -79,7 +79,7 @@ const float YOLO_INPUT_WIDTH = 640.0;
 const float YOLO_INPUT_HEIGHT = 640.0;
 const float SCORE_THRESHOLD = 0.2;
 const float NMS_THRESHOLD = 0.4;
-const float CONFIDENCE_THRESHOLD = 0.4;
+const float CONFIDENCE_THRESHOLD = 0.2; // 0.4;
 
 
 cv::Mat CYolo5::format_yolov5(const cv::Mat &source) {
@@ -121,14 +121,38 @@ void CYolo5::detect(cv::Mat &image, std::vector<YDetection> &output)
     std::vector<cv::Mat> outputs;
     m_net.forward(outputs, m_net.getUnconnectedOutLayersNames());
 
-    float x_factor = input_image.cols / YOLO_INPUT_WIDTH;
-    float y_factor = input_image.rows / YOLO_INPUT_HEIGHT;
-    
+
+    int rows;
+    int dimensions;
+    int optimizationScale = 2;
+
+	if (1)
+	{
+		rows = outputs[0].size[2];
+		dimensions = outputs[0].size[1];
+
+		dimensions = outputs[0].size[2];
+		rows = outputs[0].size[1];
+		
+        /*
+        outputs[0] = outputs[0].reshape(1, dimensions);
+		cv::transpose(outputs[0], outputs[0]);
+        */
+
+		dimensions *= optimizationScale;
+		rows /= optimizationScale;
+	}
+	else
+	{
+		dimensions = 85 * optimizationScale;
+		rows = 25200 / optimizationScale;
+	}
+
     float *data = (float *)outputs[0].data;
 
-    int debugScale = 2;
-    const int dimensions = 85* debugScale;
-    const int rows = 25200/ debugScale;
+    float x_factor = input_image.cols / YOLO_INPUT_WIDTH;
+    float y_factor = input_image.rows / YOLO_INPUT_HEIGHT;
+
     
     std::vector<int> class_ids;
     std::vector<float> confidences;

@@ -1,10 +1,8 @@
 #pragma once
 
 // DDEBUG function - should read from classes file!!!
-#if 1
 std::string getYoloClassStr(int i);
 int getYoloClassIndex(std::string classStr);
-#endif 
 
 struct YDetection
 {
