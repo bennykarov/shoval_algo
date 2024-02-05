@@ -95,7 +95,9 @@ float   g_elapsedMax = 0;
 		{
 			if (bufQ->IsEmpty())
 			{
+				//std::cout << "< before m_event.Wait()";
 				m_event.Wait();
+				//std::cout << "> after m_event.Wait()";
 			}
 			if (bufQ->pop(frameBuff) == false)
 			{
@@ -159,7 +161,7 @@ float   g_elapsedMax = 0;
 			}
 
 			frameCount++;
-		}
+		} // while !terminate
 
 
 		// termination()...
@@ -252,6 +254,7 @@ float   g_elapsedMax = 0;
 	bool algoProcess::terminate() 
 	{ 
 		m_terminate = true;
+		WakeUp(); // release wait() of queue
 		if (m_thread.joinable())
 			m_thread.join();
 		return true;
