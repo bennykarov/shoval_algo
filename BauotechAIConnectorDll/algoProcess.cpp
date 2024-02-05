@@ -2,7 +2,6 @@
 #include <iostream> 
 #include <mutex> 
 #include <queue> 
-
 #include "opencv2/opencv.hpp"
 
 
@@ -13,7 +12,11 @@
 
 #include "algoProcess.hpp"
 
-typedef std::chrono::duration<float, std::milli> duration;
+//typedef std::chrono::duration<float, std::milli> duration;
+
+float 	g_elapsedSum = 0;
+float   g_elapsedMin = 99999;
+float   g_elapsedMax = 0;
 
 /*===========================================================================================
 * AlgoProcess (thread) class
@@ -31,12 +34,19 @@ typedef std::chrono::duration<float, std::milli> duration;
 		int badImageSize = imageSize();
 
 		bool ok = m_tracker.init(m_width, m_height, image_size, m_pixelWidth, cameraConfig, m_scale/*0.5*/);
+
+		m_timer.start();
 		return ok;
 	}
 
 	void algoProcess::setCallback(CameraAICallback callback)
 	{
 		m_callback = callback;
+	}
+
+	void algoProcess::WakeUp()
+	{
+		m_event.Set();
 	}
 
 	int algoProcess::imageSize()
@@ -56,6 +66,9 @@ typedef std::chrono::duration<float, std::milli> duration;
 
 		return m_thread.joinable();
 	}
+
+
+
 	/*----------------------------------------------------------------------------------------------------
 	* Process thread (main loop) : Fetching frame from the queue , process frame and send to callback
 	* Run the m_tracker.process() and fills the 'm_Objects' objects 
@@ -64,20 +77,37 @@ typedef std::chrono::duration<float, std::milli> duration;
 	{
 		CframeBuffer frameBuff;
 		long frameCount = 0;
-		duration g_elapsedSum = duration(0);
-		duration g_elapsedMin = duration(10000);
-		duration g_elapsedMax = duration(0);
+		float elapsedSum = 0;
+		float elapsedMin = 999999;
+		float elapsedMax = 0;
 
-		while (!m_terminate) {
-			frameBuff = bufQ->front();
-			if (frameBuff.ptr == nullptr) {
-				Sleep(20);
+		while (m_terminate == false) 
+		{
+			if (bufQ->front(frameBuff) == false)
+			{
+				Sleep(10);
 				continue;
 			}
+			break;				
+		}
+
+		while (!m_terminate) 
+		{
+			if (bufQ->IsEmpty())
+			{
+				m_event.Wait();
+			}
+			if (bufQ->pop(frameBuff) == false)
+			{
+				continue;
+			}
+			//std::cout << "algoProcess::run_th: Wakeup" << frameBuff.frameNum << "\n";
+			
 			if (1)
-				if (m_frameNum == frameBuff.frameNum) {
+				if (m_frameNum == frameBuff.frameNum)
+				{
 					//>>std::cout << "m_frameNum == frameBuff.frameNum  \n";
-					Sleep(5);
+					Beep(1200, 10); // Sleep(5);
 					//bufQ->pop(); // release buffer
 					continue;
 				}
@@ -85,35 +115,31 @@ typedef std::chrono::duration<float, std::milli> duration;
 			m_frameNum = frameBuff.frameNum;
 
 
-			auto start = std::chrono::system_clock::now();
+			m_timer.sample();
 
 			// m_objectCount = m_tracker.process((void*)frameBuff.ptr, m_Objects);
 			cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
 			m_objectCount = m_tracker.process(frameBGR, m_Objects);
 
+			float elapsed = m_timer.sample();
 
-			auto end = std::chrono::system_clock::now();
 
+			if (m_frameNum % 60 == 0)
+				std::cout << "duration: " << elapsed << " milliseconds" << std::endl;
+			//else if (elapsed > 33)	std::cout << "long duration: " << elapsed << " milliseconds" << std::endl;
 
-			duration elapsed = end - start;
-			g_elapsedMin = MIN(g_elapsedMin, elapsed);
-			g_elapsedMax= MAX(g_elapsedMax, elapsed);
-
-			g_elapsedSum += elapsed;
+			
 
 
 			// DDEBUG : for getbjectData() API  
 			//---------------------------------------
-			if (1) {
+			if (0) {
 				std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);
 				m_pObjectsAPI.clear();
 				for (int i = 0; i < m_objectCount; i++)
 					m_pObjectsAPI.push_back(m_Objects[i]); 
 			}
-
-
-			bufQ->pop(); // release buffer
-			//objectCount = pObjects->reserved1;
+			 
 
 			int i = 0;
 			for (;i < m_objectCount; i++)
@@ -122,28 +148,17 @@ typedef std::chrono::duration<float, std::milli> duration;
 				m_Objects[i].frameNum = -1;
 
 
-			//if (m_objectCount > 0)  gAlgoObjects[m_videoIndex] = m_Objects[0]; // only first object (for now)
-
 			// send the data to the callback
 			if (m_callback != nullptr && m_objectCount > 0)
 			{
 				if (m_objectCount > 2)
 					int debug = 10;
-				std::cout << "Find " << m_objectCount << " objects \n";
+				//std::cout << "Find " << m_objectCount << " objects \n";
 
 				m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
 			}
 
 			frameCount++;
-			if (frameCount % 30 == 0) {
-				std::cout << " FPS = " << 1000. / (g_elapsedSum.count() / 30.) << " ( min / max = " << (1000. / g_elapsedMin.count())  << " , " << (1000. / g_elapsedMax.count()) <<  "\n";
-				g_elapsedSum = duration(0);
-				g_elapsedMax = duration(0);
-				g_elapsedMin = duration(100000);
-
-				frameCount = 0;
-			}
-
 		}
 
 
@@ -163,20 +178,21 @@ typedef std::chrono::duration<float, std::milli> duration;
 		long frameCount = 0;
 
 
-		duration g_elapsedSum = duration(0);
-		duration g_elapsedMin = duration(10000);
-		duration g_elapsedMax = duration(0);
+		g_elapsedSum = 0;
+		g_elapsedMin = 10000;
+		g_elapsedMax = 0;
 
 		m_frameNum = frameBuff.frameNum;
 
 
-		auto start = std::chrono::system_clock::now();
+		m_timer.start();
 
 		//m_objectCount = m_tracker.process((void*)frameBuff.ptr, m_Objects);
 		cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
 		m_objectCount = m_tracker.process(frameBGR, m_Objects);
 
-		auto end = std::chrono::system_clock::now();
+		//auto end = std::chrono::system_clock::now();
+		m_timer.sample();
 
 		for (int i=0;i< m_objectCount;i++)
 			AIobjects[i] = m_Objects[i];
@@ -185,10 +201,10 @@ typedef std::chrono::duration<float, std::milli> duration;
 		frameCount++;
 
 		if (frameCount % 30 == 0) {
-			std::cout << " FPS = " << 1000. / (g_elapsedSum.count() / 30.) << " ( min / max = " << (1000. / g_elapsedMin.count()) << " , " << (1000. / g_elapsedMax.count()) << "\n";
-			g_elapsedSum = duration(0);
-			g_elapsedMax = duration(0);
-			g_elapsedMin = duration(100000);
+			std::cout << " FPS = " << 1000. / (g_elapsedSum / 30.) << " ( min / max = " << (1000. / g_elapsedMin) << " , " << (1000. / g_elapsedMax) << "\n";
+			g_elapsedSum = 0;
+			g_elapsedMax = 0;
+			g_elapsedMin = 99999;
 
 			frameCount = 0;
 		}

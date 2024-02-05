@@ -44,12 +44,13 @@ private:
     int m_queueLen;
 
     int pushPtr = 0;    // index in queue
-    int popPtr =  -1;  // index in queue
+    int popPtr =  0;  // index in queue
 
     int ptrNext(int ptr);
 
     boost::circular_buffer<int> m_queueIndex;
-
+    int getQueueSize();
+     
 
 public:
     TSBuffQueue() {}
@@ -63,6 +64,7 @@ public:
     void set(int imgWidth, int imgHeight, int depth, int queueLen);
     // Pushes an element to the queue 
     bool push(CframeBuffer);
-    CframeBuffer pop();
-    CframeBuffer front();
+    bool IsEmpty();
+    bool pop(CframeBuffer& poppedFrame);
+    bool front(CframeBuffer& frontFrame);
 };

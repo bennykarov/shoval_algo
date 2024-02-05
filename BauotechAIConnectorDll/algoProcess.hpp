@@ -2,8 +2,9 @@
 #include <iostream> 
 #include <mutex> 
 #include <queue> 
-
+#include "AutoResetEvent.h"
 #include "queuing.hpp"
+#include "utils.hpp"
 
 #define MAX_OBJECTS 20 // DDEBUG CONST !!!!!!!!
 
@@ -29,9 +30,11 @@ public:
 	int run_sync(void* pData, int frameNum, ALGO_DETECTION_OBJECT_DATA* AIobjects);
 	// getters
 
+	void WakeUp();
+
 private:
 	std::thread m_thread;
-
+	AutoResetEvent m_event;
 	CameraAICallback m_callback;
 	CDetector m_tracker;
 
@@ -52,4 +55,6 @@ private:
 	int m_youDraw = 0;
 
 	void fakeCallBack(int m_videoIndex, ALGO_DETECTION_OBJECT_DATA* m_pObjects, int m_objectCount, void* ptr, int something);
+
+	CTimer m_timer;
 };

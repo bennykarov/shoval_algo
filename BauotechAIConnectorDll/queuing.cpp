@@ -45,57 +45,80 @@
      Push any case - even if queue is full (overwrite previous frames in queue)
      TBD: in case POP is in the same location - skip to next location 
      ---------------------------------------------------------------------*/
+
+    int TSBuffQueue::getQueueSize()
+    {
+        if (pushPtr == popPtr)
+        {
+            return 0;
+        }
+        if (pushPtr > popPtr)
+		{
+			return pushPtr - popPtr;
+		}
+		else
+		{
+			return m_queueLen - popPtr + pushPtr;
+		}   
+    }
+
     bool TSBuffQueue::push(CframeBuffer frame)
     {
         std::lock_guard<std::mutex> bufferLockGuard(g_BufferMutex); // ????  DDEBUG ????
 
         //std::cout << ">> push = " << m_buffers[pushPtr].frameNum << std::endl;
-
-        if (pushPtr == popPtr) {
-            std::cout << "overflow in buffer queueing \n";
-            //return false; // queue is full
-            // must add a location mutex to sync shared position 
-        }
+        if (getQueueSize() >= m_queueLen)
+        {
+			std::cout << "overflow in buffer queueing \n";
+			return false; // queue is full
+		}
+         
 
         memcpy(m_buffers[pushPtr].ptr, frame.ptr, bufferSize());
         m_buffers[pushPtr].frameNum = frame.frameNum;
 
 
         // Starter to popPtr
-        if (popPtr < 0)
-			popPtr = pushPtr;
+        //if (popPtr < 0)
+			//popPtr = pushPtr;
 
-        pushPtr = ptrNext(pushPtr);
+         
+        pushPtr = (pushPtr + 1) % m_queueLen;
+        //pushPtr = ptrNext(pushPtr);
         return true;
     }
 
-    // Pops an element off the queue 
-    // 'popPtr' is the index of the next element to be pushed
-    CframeBuffer TSBuffQueue::pop()
+    bool TSBuffQueue::IsEmpty()
     {
-        // handle First time 
-        if (popPtr < 0 && pushPtr !=0)
-            popPtr = 0;
+        std::lock_guard<std::mutex> bufferLockGuard(g_BufferMutex);
 
-        // Check overflow , quit, wait until Push location advance
-        int checkPtr = ptrNext(popPtr);        
-        if (checkPtr == pushPtr)  
-            return CframeBuffer();
-
-        popPtr = ptrNext(popPtr);
-
-        //std::cout << "<< pop = " << m_buffers[popPtr].frameNum << std::endl;
-
-        return m_buffers[popPtr];
+        return (pushPtr == popPtr); 
     }
-    // Get pop (front) element off the queue 
-    CframeBuffer TSBuffQueue::front()
+
+    bool TSBuffQueue::pop(CframeBuffer& poppedFrame)
     {
+        std::lock_guard<std::mutex> bufferLockGuard(g_BufferMutex);
+
+        if (getQueueSize() <= 0)
+        {
+            return false; // Queue is empty
+        }
+ 
+        poppedFrame = m_buffers[popPtr];
+        popPtr  = (popPtr + 1) % m_queueLen;
+        return true;
+    }
+
+
+    bool TSBuffQueue::front(CframeBuffer& frontFrame)
+    {
+        std::lock_guard<std::mutex> bufferLockGuard(g_BufferMutex);
+
         if (popPtr < 0)
-            return CframeBuffer();
+            return false; // Queue is empty
 
-        return m_buffers[popPtr];
-
+        frontFrame = m_buffers[popPtr];
+        return true;
     }
 
 // NOTES \ FRAFTS 
