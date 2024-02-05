@@ -1,6 +1,9 @@
 #pragma once
 
 
+#define MAX_OBJECTS 20 
+#define MAX_CAMERAS 10 
+
 namespace CONSTANTS {
 	int const FPS = 30;
 	int const DetectionFPS = 3;

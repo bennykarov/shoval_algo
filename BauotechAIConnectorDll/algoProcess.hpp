@@ -5,8 +5,9 @@
 #include "AutoResetEvent.h"
 #include "queuing.hpp"
 #include "utils.hpp"
+#include "timer.hpp"
+#include "config.hpp"
 
-#define MAX_OBJECTS 20 // DDEBUG CONST !!!!!!!!
 
 /*===========================================================================================
 * AlgoProcess (thread) class
