@@ -250,14 +250,14 @@ bool CDetector::InitGPU()
 }
 
 
-bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraConfig, float scaleDisplay)
+bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, char* cameraConfig, float scaleDisplay)
 {
 		m_width = w;
 		m_height = h;
 		m_colorDepth = imgSize / (w*h);
+		m_cameraIndex = camIndex;
 
-		if (1)
-			m_colorDepth = pixelWidth; // in Byte unit / 8;
+		m_colorDepth = pixelWidth; // in Byte unit / 8;
 
 			
 		setConfigDefault(m_params);
@@ -272,8 +272,7 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraCon
 
 		// Handle ROI and active polygons:
 		//-------------------------------
-		int cameraIndex = 0;
-		int camCount = readCamerasJson(cameraConfig, m_camerasInfo , cameraIndex);
+		int camCount = readCamerasJson(cameraConfig, m_camerasInfo , m_cameraIndex);
 		CHECK_exception(camCount > 0, std::string("Error , No camera.jeson was found in " + std::string(cameraConfig)).c_str());
 
 		if (OLD_ROI) //* OLD ROI setting from config file 
@@ -296,11 +295,8 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraCon
 			}
 		}
 
-		for (auto camInf : m_camerasInfo) {
-			if (camInf.m_camID == 0) // currently only one camera is supported !!
+		for (auto camInf : m_camerasInfo) 
 				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_maxAllowed); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
-
-		}
 			//---------------------------------------------------------------------------------------
 
 
@@ -310,7 +306,7 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraCon
 		if (m_params.MLType > 0)
 		{
 			if (!m_yolo.init(m_params.modelFolder, m_isCuda)) {
-				std::cout << "Cant init YOLO5 net , quit \n";
+				std::cout << "Cant init YOLO net , quit \n";
 
 				return false;
 			}

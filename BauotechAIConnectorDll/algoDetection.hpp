@@ -39,7 +39,7 @@ enum STAGE {
 
 class CDetector {
 public:
-	bool init(int w, int h, int imgSize, int pixelWidth,  char * cameraConfig, float scaleDisplay = 0.5);
+	bool init(int camIndex, int w, int h, int imgSize, int pixelWidth,  char * cameraConfig, float scaleDisplay = 0.5);
 	bool InitGPU();
 	int process(void* dataTemp, ALGO_DETECTION_OBJECT_DATA* pObjects);
 	int process(cv::Mat frame, ALGO_DETECTION_OBJECT_DATA* pObjects);
@@ -85,6 +85,7 @@ private:
 	//CTracker       m_tracker;
 	CDecipher m_decipher;
 	std::vector <CAlert> m_camerasInfo;
+	int m_cameraIndex = 0;
 
 
 private:
