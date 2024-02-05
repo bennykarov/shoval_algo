@@ -23,7 +23,8 @@
 #include "const.hpp"
 #include "AlgoApi.h"
 #include "CObject.hpp"
-#include "yolo/yolo5.hpp"
+//#include "yolo/yolo5.hpp"
+#include "yolo/yolo.hpp"
 #include "alert.hpp"
 #include "concluder.hpp"
 
@@ -42,42 +43,43 @@
 #include "algoDetection.hpp"
 
 #define MAX_PERSON_DIM	cv::Size(40, 90) // DDEBUG CONST
-#define OLD_ROI true
+#define MAX_OBJ_DIM	cv::Size(350, 350) // DDEBUG CONST	
+#define OLD_ROI false
 
 
 #ifdef _DEBUG
-#pragma comment(lib, "opencv_core480d.lib")
-#pragma comment(lib, "opencv_highgui480d.lib")
-#pragma comment(lib, "opencv_video480d.lib")
-#pragma comment(lib, "opencv_videoio480d.lib")
-#pragma comment(lib, "opencv_imgcodecs480d.lib")
-#pragma comment(lib, "opencv_imgproc480d.lib")
-#pragma comment(lib, "opencv_tracking480d.lib")
-#pragma comment(lib, "opencv_dnn480d.lib")
-#pragma comment(lib, "opencv_cudabgsegm480d.lib")
+#pragma comment(lib, "opencv_core470d.lib")
+#pragma comment(lib, "opencv_highgui470d.lib")
+#pragma comment(lib, "opencv_video470d.lib")
+#pragma comment(lib, "opencv_videoio470d.lib")
+#pragma comment(lib, "opencv_imgcodecs470d.lib")
+#pragma comment(lib, "opencv_imgproc470d.lib")
+#pragma comment(lib, "opencv_tracking470d.lib")
+#pragma comment(lib, "opencv_dnn470d.lib")
+#pragma comment(lib, "opencv_cudabgsegm470d.lib")
 //#pragma comment(lib, "cuda.lib")
-//#pragma comment(lib, "opencv_calib3d480d.lib")
-//#pragma comment(lib, "opencv_bgsegm480d.lib")
+//#pragma comment(lib, "opencv_calib3d470d.lib")
+//#pragma comment(lib, "opencv_bgsegm470d.lib")
 #else
-#pragma comment(lib, "opencv_core480.lib")
-#pragma comment(lib, "opencv_highgui480.lib")
-#pragma comment(lib, "opencv_video480.lib")
-#pragma comment(lib, "opencv_videoio480.lib")
-#pragma comment(lib, "opencv_imgcodecs480.lib")
-#pragma comment(lib, "opencv_imgproc480.lib")
-#pragma comment(lib, "opencv_tracking480.lib")
-#pragma comment(lib, "opencv_dnn480.lib")
-#pragma comment(lib, "opencv_cudabgsegm480.lib")
-//#pragma comment(lib, "opencv_world480.lib")
+#pragma comment(lib, "opencv_core470.lib")
+#pragma comment(lib, "opencv_highgui470.lib")
+#pragma comment(lib, "opencv_video470.lib")
+#pragma comment(lib, "opencv_videoio470.lib")
+#pragma comment(lib, "opencv_imgcodecs470.lib")
+#pragma comment(lib, "opencv_imgproc470.lib")
+#pragma comment(lib, "opencv_tracking470.lib")
+#pragma comment(lib, "opencv_dnn470.lib")
+#pragma comment(lib, "opencv_cudabgsegm470.lib")
+//#pragma comment(lib, "opencv_world470.lib")
 #endif
 
 
 
 /*
 #ifdef _DEBUG
-#pragma comment(lib, "opencv_world480d.lib")
+#pragma comment(lib, "opencv_world470d.lib")
 #else
-#pragma comment(lib, "opencv_world480.lib")
+#pragma comment(lib, "opencv_world470.lib")
 #endif
 */
 
@@ -240,6 +242,7 @@ bool CDetector::InitGPU()
 	if (!m_yolo.init(m_params.modelFolder,true)) 
 	{
 		std::cout << "Cant init YOLO5 net , quit \n";
+		//std::cout << "Cant init YOLO8 net , quit \n";
 		return false;
 	}
 	return true;
@@ -293,11 +296,12 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraCon
 			}
 		}
 
-			for (auto camInf : m_camerasInfo) {
+		for (auto camInf : m_camerasInfo) {
 			if (camInf.m_camID == 0) // currently only one camera is supported !!
 				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_maxAllowed); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
 
-		}//---------------------------------------------------------------------------------------
+		}
+			//---------------------------------------------------------------------------------------
 
 
 		// if (m_isCuda) MessageBoxA(0, "RUN WITH GPU", "Info", MB_OK);   else  MessageBoxA(0, "RUN WITOUT GPU", "Info", MB_OK);
@@ -330,7 +334,6 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraCon
 		size_t sizeTemp(m_width * m_height * m_colorDepth);
 		if (m_data == NULL)
 			m_data = malloc(sizeTemp);
-		//Sleep(1000);
 
 		return true;
 		}
@@ -359,7 +362,7 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraCon
 				m_motionDetectet = cv::countNonZero(m_bgMask) > ALGO_DETECTOPN_CONSTS::MIN_PIXELS_FOR_MOTION;
 				std::vector <cv::Rect>  BGSEGoutput = detectByContours(m_bgMask);
 				for (auto obj : BGSEGoutput) {
-					if (obj.area() <= MAX_PERSON_DIM.width*MAX_PERSON_DIM.height)
+					if (obj.area() <= MAX_OBJ_DIM.width* MAX_OBJ_DIM.height)
 						m_BGSEGoutput.push_back(obj);
 					else 
 						m_BGSEGoutputLarge.push_back(obj);
@@ -375,8 +378,7 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraCon
 			m_yolo.detect(frame, m_Youtput);
 		}
 		
-		if (m_Youtput.size() > 0)
-			std::cout << "Yolo detect objects = " << m_Youtput.size() << "\n";
+		//if (m_Youtput.size() > 0)   std::cout << "Yolo detect objects = " << m_Youtput.size() << "\n"; // DDEBUG 
 
 		m_decipher.add(m_BGSEGoutput, m_Youtput, m_frameNum); // add & match
 
@@ -419,7 +421,8 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraCon
 			if (OLD_ROI) // DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG 
 				sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale);
 			else {
-				sirenObjs = m_decipher.getObjects(m_frameNum);
+				sirenObjs = m_decipher.getSirenObjects(1.);
+				//sirenObjs = m_decipher.getObjects(m_frameNum);
 
 				// scale back to original image size:
 				for (auto& obj : sirenObjs) {
@@ -429,8 +432,6 @@ bool CDetector::init(int w, int h, int imgSize , int pixelWidth, char* cameraCon
 				}
 			}
 			
-
-
 
 			for (int k = 0; k < sirenObjs.size(); k++)
 				cObject_2_pObject(sirenObjs[k], &pObjects[k]);

@@ -19,7 +19,7 @@
 
 
 #include "CObject.hpp"
-#include "yolo/yolo5.hpp"
+#include "yolo/yolo.hpp"
 
 #include "utils.hpp"
 #include "database.hpp"

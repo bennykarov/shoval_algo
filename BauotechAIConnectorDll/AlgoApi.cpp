@@ -118,8 +118,11 @@ API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, u
 {
 	//frameNumber = g_frameNumbers[videoIndex]; // count frames inside function, should be counted in caller function!
 	//g_frameNumbers[videoIndex] = frameNumber;
+	//std::cout << "IN frameNumber = " << frameNumber << "\n";	
 	bool ok = g_bufQ.push(CframeBuffer(frameNumber, (char*)pData));
-
+	g_algoProcess[videoIndex].WakeUp();
+	//std::cout << "Wakeup" << "\n";	
+	
 	return ok ? 1 : 0;
 
 }

@@ -14,7 +14,9 @@
 
 #include "yolo/types.hpp"
 #include "CObject.hpp"
-#include "yolo/yolo5.hpp"
+#include "yolo/yolo.hpp"
+//#include "yolo/yolo5.hpp"
+//#include "yolo/yoloV8.hpp"
 #include "concluder.hpp"
 
 
@@ -78,7 +80,8 @@ private:
 	cv::Mat m_bgMask; // MOG2
 	cv::Mat m_display;
 
-	CYolo5 m_yolo;
+	//CYolo5 m_yolo;
+	CYolo8 m_yolo;
 	//CTracker       m_tracker;
 	CDecipher m_decipher;
 	std::vector <CAlert> m_camerasInfo;

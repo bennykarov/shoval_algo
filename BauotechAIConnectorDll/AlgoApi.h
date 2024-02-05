@@ -19,7 +19,7 @@ typedef struct ALGO_DETECTION_OBJECT_DATA
 	int ObjectType; // optional
 	int DetectionPercentage;// optional
 	int frameNum;
-	int ID; // reserved2;
+	int ID;  
 } ALGO_DETECTION_OBJECT_DATA;
 #pragma pack(pop) 
 
@@ -33,20 +33,11 @@ typedef void (__cdecl *CameraAICallback)(uint32_t videoIndex, ALGO_DETECTION_OBJ
 
 typedef enum BAUOTECH_AND_BENNY_KAROV_ALGO
 {
-	ALGO_SHOVAL = 2023,
-	ALGO_RAMI_LEVI = 2001,
-	ALGO_ZOSMAN = 2002,
-	ALGO_DEFAULT = 2003,
-	ALGO_EMBOSS = 2004,
-	ALGO_GREY = 2005,
-	ALGO_BLUR = 2006,
-	ALGO_POSTERIZE = 2007,
-	ALGO_XOR = 2008,
-	ALGO_DARKEN = 2009,
-	ALGO_BLUE = 2010,
-	ALGO_GREEN = 2011,
-	ALGO_RED = 2012,
-	BLACK_WHITE = 2013
+	NO_ALGO = 0,
+	ALGO_SHOVAL = 1,
+	ALGO_RAMI_LEVI = 2,
+	ALGO_ZOSMAN = 3,
+	ALGO_DEFAULT = 4,
 
 } BAUOTECH_AND_BENNY_KAROV_ALGO;
 typedef struct VideoInfo
