@@ -9,6 +9,8 @@ using namespace cv;
 using namespace cv::dnn;
 
 
+bool m_isCuda = true;
+
 //const std::string modelFName = R"(C:\Program Files\Bauotech\dll\algo\models\yolov8n.onnx)";
 const std::string modelFName = R"(C:\Program Files\Bauotech\dll\algo\models\yolov8s.onnx)";
 const std::string classesFName = R"(C:\Program Files\Bauotech\dll\algo\models\classes.txt)";
@@ -190,8 +192,7 @@ int main_yolo8()
     Mat frame;
     VideoCapture cap("Resources/sample.mp4");
     Net net;
-    bool is_cuda = true;
-    load_net_(net, is_cuda);
+    load_net_(net, m_isCuda);
     vector<Mat> detections;
 
     auto start = std::chrono::high_resolution_clock::now();
@@ -254,19 +255,20 @@ int main_yolo8()
 
 bool CYolo8::init(std::string modelFolder, bool is_cuda)
 {
+    m_isCuda = is_cuda;
     m_modelFolder = modelFolder;
     m_class_list = load_class_list();
     if (m_class_list.empty()) {
         std::cout << "Error : Empty class list - ML detection won't work! \n";
         return false;
     }
-    return load_net_(m_net, is_cuda);
+    return load_net_(m_net, m_isCuda);
 }
 
 
 void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
 {
-    bool is_cuda = true;
+    //bool is_cuda = true;
 
     vector<int> class_ids;
     vector<float> confidences;

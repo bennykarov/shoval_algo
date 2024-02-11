@@ -110,7 +110,7 @@ int readCamerasJson(std::string fname, std::vector <CAlert>& cameras, int camera
     if (!fp) {
         std::cerr << "Error: unable to open file"
             << std::endl;
-        return 1;
+        return 0;
     }
 
     // Read the file into a buffer 

@@ -5,9 +5,10 @@
 #include "opencv2/videoio.hpp"
 #include "opencv2/highgui.hpp"
 #include "opencv2/video/background_segm.hpp"
-// GPU 
+#ifdef USE_CUDA
 #include <opencv2/cudabgsegm.hpp>
 #include <opencv2/cudalegacy.hpp>
+#endif 
 
 
 #include "mog.hpp"
@@ -92,11 +93,15 @@ void CBGSubstruct::init(int History, double varThreshold, bool detectShadows, in
 
 
     //create Background Subtractor objects
+#ifdef USE_CUDA
     if (!m_isGPU)
 	    m_pBackSub = createBackgroundSubtractorMOG2( History, varThreshold, detectShadows); // createBackgroundSubtractorKNN();
     else 
         m_pBackSub = cv::cuda::createBackgroundSubtractorMOG2(History, varThreshold, detectShadows);
+#else
+    m_pBackSub = createBackgroundSubtractorMOG2(History, varThreshold, detectShadows); // createBackgroundSubtractorKNN();
 
+#endif 
 	m_emphasize = emphasize;
 
 }
@@ -111,19 +116,7 @@ cv::Mat  CBGSubstruct::process(cv::Mat frame)
 
     m_frameNum = (m_frameNum+1) % 99999;
 
-#if 0
-	bool RamiLevi = false;
-    //update the background model
-	if (RamiLevi)
-	{
-		cv::Mat HSV, channels[3];
-		cv::cvtColor(frame, HSV, cv::COLOR_BGR2HSV);
-		cv::split(HSV, channels);
-
-		m_pBackSub->apply(channels[2], fgMask, m_learningRate);
-	}
-	else 
-#endif 
+#ifdef USE_CUDA
         if (!m_isGPU) {
             m_pBackSub->apply(frame, fgMask, m_learningRate);
         }
@@ -134,7 +127,10 @@ cv::Mat  CBGSubstruct::process(cv::Mat frame)
         //d_frame.download(frame);
         d_fgMask.download(fgMask);
     }
+#else
+    m_pBackSub->apply(frame, fgMask, m_learningRate);
 
+#endif 
 	if (m_frameNum < 5) // wormup subStruction
 		return cv::Mat();
 

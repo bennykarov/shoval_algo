@@ -3,14 +3,12 @@
 #include <mutex>
 #include <chrono>
 #include  <numeric>
-//#include<tuple>
 
-#define CUDA_ON // DDEBUG 
 
 #include "opencv2/opencv.hpp"
 #include "opencv2/core/core.hpp"
 #include "opencv2/videoio.hpp"
-#ifdef CUDA_ON
+#ifdef USE_CUDA
 #include <opencv2/cudaarithm.hpp>
 #endif
 
@@ -23,7 +21,6 @@
 #include "const.hpp"
 #include "AlgoApi.h"
 #include "CObject.hpp"
-//#include "yolo/yolo5.hpp"
 #include "yolo/yolo.hpp"
 #include "alert.hpp"
 #include "concluder.hpp"
@@ -56,10 +53,10 @@
 #pragma comment(lib, "opencv_imgproc470d.lib")
 #pragma comment(lib, "opencv_tracking470d.lib")
 #pragma comment(lib, "opencv_dnn470d.lib")
+#pragma comment(lib, "opencv_bgsegm470d.lib")
+#ifdef USE_CUDA
 #pragma comment(lib, "opencv_cudabgsegm470d.lib")
-//#pragma comment(lib, "cuda.lib")
-//#pragma comment(lib, "opencv_calib3d470d.lib")
-//#pragma comment(lib, "opencv_bgsegm470d.lib")
+#endif
 #else
 #pragma comment(lib, "opencv_core470.lib")
 #pragma comment(lib, "opencv_highgui470.lib")
@@ -69,19 +66,12 @@
 #pragma comment(lib, "opencv_imgproc470.lib")
 #pragma comment(lib, "opencv_tracking470.lib")
 #pragma comment(lib, "opencv_dnn470.lib")
+#pragma comment(lib, "opencv_bgsegm470.lib")
+#ifdef USE_CUDA
 #pragma comment(lib, "opencv_cudabgsegm470.lib")
-//#pragma comment(lib, "opencv_world470.lib")
+#endif
 #endif
 
-
-
-/*
-#ifdef _DEBUG
-#pragma comment(lib, "opencv_world470d.lib")
-#else
-#pragma comment(lib, "opencv_world470.lib")
-#endif
-*/
 
 
 namespace  ALGO_DETECTOPN_CONSTS {
@@ -194,7 +184,7 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 
 	int checkForGPUs()
 	{
-#ifdef CUDA_ON
+#ifdef USE_CUDA
 
 		using namespace cv::cuda;
 
@@ -264,7 +254,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 		readConfigFile(CONSTANTS::CONFIG_FILE_NAME, m_params);
 		debugSaveParams(w, h, imgSize, pixelWidth, scaleDisplay, m_params);
 
-
 		if (m_params.useGPU == 0) 
 			m_isCuda = false;
 		else 
@@ -273,7 +262,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 		// Handle ROI and active polygons:
 		//-------------------------------
 		int camCount = readCamerasJson(cameraConfig, m_camerasInfo , m_cameraIndex);
-		CHECK_exception(camCount > 0, std::string("Error , No camera.jeson was found in " + std::string(cameraConfig)).c_str());
+		CHECK_exception(camCount > 0, std::string("Error , No camera.json was found in " + std::string(cameraConfig)).c_str());
 
 		if (OLD_ROI) //* OLD ROI setting from config file 
 		{
