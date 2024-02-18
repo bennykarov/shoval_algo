@@ -18,7 +18,7 @@
 #include <boost/lexical_cast.hpp> 
 
 
-#include "const.hpp"
+#include "files.hpp"
 #include "AlgoApi.h"
 #include "CObject.hpp"
 #include "yolo/yolo.hpp"
@@ -251,7 +251,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 
 			
 		setConfigDefault(m_params);
-		readConfigFile(CONSTANTS::CONFIG_FILE_NAME, m_params);
+		readConfigFile(FILES::CONFIG_FILE_NAME, m_params);
 		debugSaveParams(w, h, imgSize, pixelWidth, scaleDisplay, m_params);
 
 		if (m_params.useGPU == 0) 
@@ -263,6 +263,14 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 		//-------------------------------
 		int camCount = readCamerasJson(cameraConfig, m_camerasInfo , m_cameraIndex);
 		CHECK_exception(camCount > 0, std::string("Error , No camera.json was found in " + std::string(cameraConfig)).c_str());
+		for (auto& camInf : m_camerasInfo) {
+			if (camInf.m_polyPoints.empty() || !camInf.checkPolygon(w, h)) {
+				CHECK_warning(false, std::string("Error , No camera.json or bad definitions" + std::string(cameraConfig)).c_str());
+				camInf.m_polyPoints = { cv::Point(0,0), cv::Point(w - 1,0), cv::Point(w - 1,h - 1), cv::Point(0,h - 1) };
+			}
+		}
+
+
 
 		if (OLD_ROI) //* OLD ROI setting from config file 
 		{

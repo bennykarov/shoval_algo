@@ -6,6 +6,7 @@
 
 
 // EXCEPTION HANDLING
+#define CHECK_warning(COND, MSG)   ((COND) ? (static_cast<void>(0)) : warning_fail(# COND, __FILE__, __LINE__, MSG))
 #define CHECK_assertion(COND)   ((COND) ? (static_cast<void>(0)) : assertion_fail(# COND, __FILE__, __LINE__))
 #define CHECK_exception(COND, MSG)   ((COND) ? (static_cast<void>(0)) : assertion_fail(# COND, __FILE__, __LINE__, MSG))
 
@@ -38,6 +39,13 @@ inline  void assertion_fail(const char* expr, const char* file, int line)
 	std::string error = ";Error    in expr : " + std::string(expr) + ", file: " + file + "(" + std::to_string(line) + ")";
 	MessageBoxA(0, error.c_str(), "EXCEPTION!", MB_OK);
 	std::exit(1);
+}
+inline  void warning_fail(const char* expr, const char* file, int line, const char* msg)
+{
+	std::string error = msg;
+	error.append(";    in expr" + std::string(expr) + ", file: " + file + "(" + std::to_string(line) + ")");
+	MessageBoxA(0, error.c_str(), "EXCEPTION!", MB_OK);
+	//std::exit(1);
 }
 
 template<typename T>

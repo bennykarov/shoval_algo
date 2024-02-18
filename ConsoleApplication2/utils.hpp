@@ -47,6 +47,43 @@ public:
     int m_label = -1;
     int m_maxAllowed = -1;
     cv::Rect  m_bbox;
+public:
+	bool checkPolygon(int width, int height)
+	{
+		for (auto& point : m_polyPoints) {
+			if (point.x >= width)
+				return false;
+				//point.x = width - 1;
+			if (point.y >= height)
+				return false;
+				//point.y = height - 1;
+		}
+
+		/*
+		auto it = std::max_element(
+			m_polyPoints.begin(),
+			m_polyPoints.end(),
+			[](auto first, auto second) {
+				return first.x < second.x;
+			});
+		int maxX = std::max_element(
+			m_polyPoints.begin(),
+			m_polyPoints.end(),
+			[](auto first, auto second) {
+				return first.x < second.x;
+			})->x;
+		int maxY = std::max_element(
+			m_polyPoints.begin(),
+			m_polyPoints.end(),
+			[](auto first, auto second) {
+				return first.y < second.y;
+			})->y;
+
+		if (maxX >= width )
+		return false;
+		*/
+		return true;
+	}
 };
 
 

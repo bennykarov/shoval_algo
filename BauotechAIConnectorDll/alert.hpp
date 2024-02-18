@@ -19,6 +19,20 @@ public:
 	std::vector <CObject> selectObjects(std::vector <CObject> objects);
 
 public:
+	bool checkPolygon(int width, int height)
+	{
+		for (auto& point : m_polyPoints) {
+			if (point.x >= width)
+				return false;
+			//point.x = width - 1;
+			if (point.y >= height)
+				return false;
+			//point.y = height - 1;
+		}
+		return true;
+	}
+
+public:
 	int m_camID;
 	std::vector<cv::Point > m_polyPoints;
 	//std::tuple <int,int> label_allowed;

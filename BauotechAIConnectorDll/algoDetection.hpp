@@ -80,7 +80,7 @@ private:
 	cv::Mat m_bgMask; // MOG2
 	cv::Mat m_display;
 
-	//CYolo5 m_yolo;
+	//CYolo5 m_yolo; // DDEBUG 
 	CYolo8 m_yolo;
 	//CTracker       m_tracker;
 	CDecipher m_decipher;
