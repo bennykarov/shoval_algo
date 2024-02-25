@@ -3,7 +3,9 @@
 #include <filesystem>
 
 #include <opencv2/opencv.hpp>
-#include "yolo5.hpp"
+
+#include "yolo.hpp"
+//#include "yolo5.hpp"
 
 
 
@@ -48,7 +50,7 @@ std::vector<std::string> CYolo5::load_class_list()
 
 bool CYolo5::load_net(bool is_cuda)
 {
-	std::filesystem::path cwd = std::filesystem::current_path();
+	//std::filesystem::path cwd = std::filesystem::current_path();
 		
     //auto result = cv::dnn::readNet(m_modelFolder + "/yolov5s.onnx");
     auto result = cv::dnn::readNet(m_modelFolder + "/yolov5n.onnx");
@@ -75,8 +77,10 @@ bool CYolo5::load_net(bool is_cuda)
 }
 
 
+/*
 const float YOLO_INPUT_WIDTH = 640.0;
 const float YOLO_INPUT_HEIGHT = 640.0;
+*/
 const float SCORE_THRESHOLD = 0.2;
 const float NMS_THRESHOLD = 0.4;
 const float CONFIDENCE_THRESHOLD = 0.2; // 0.4;

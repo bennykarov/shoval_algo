@@ -11,17 +11,21 @@ using namespace cv::dnn;
 
 bool m_isCuda = true;
 
-//const std::string modelFName = R"(C:\Program Files\Bauotech\dll\algo\models\yolov8n.onnx)";
+#if 0
 const std::string modelFName = R"(C:\Program Files\Bauotech\dll\algo\models\yolov8s.onnx)";
+//const std::string modelFName = R"(C:\Program Files\Bauotech\dll\algo\models\yolov8n.onnx)";
 const std::string classesFName = R"(C:\Program Files\Bauotech\dll\algo\models\classes.txt)";
-
+#endif 
+const std::string modelFName = "yolov8s.onnx";
+//const std::string modelFName = "yolov8n.onnx";
+const std::string classesFName = "classes.txt";
 
 const std::vector<cv::Scalar> colors = { cv::Scalar(255, 255, 0), cv::Scalar(0, 255, 0), cv::Scalar(0, 255, 255), cv::Scalar(255, 0, 0) };
 
 
-const float INPUT_WIDTH = 640.0;
-const float INPUT_HEIGHT = 480.0;
-const float SCORE_THRESHOLD = 0.45;
+//const float SCORE_THRESHOLD = 0.45;
+const float SCORE_THRESHOLD = 0.55;
+const float PERSON_SCORE_THRESHOLD = 0.15;
 const float NMS_THRESHOLD = 0.5;
 const float CONFIDENCE_THRESHOLD = 0.25;
 
@@ -54,7 +58,7 @@ void draw_label(Mat& input_image, string label, int left, int top)
 
 
 
-std::vector<std::string> load_class_list()
+std::vector<std::string> load_class_list(std::string classesFName)
 {
     std::vector<std::string> class_list;
     std::ifstream ifs(classesFName);
@@ -69,6 +73,9 @@ std::vector<std::string> load_class_list()
     }
     return class_list;
 }
+
+
+
 
 bool load_net_(cv::dnn::Net& net, bool is_cuda)
 {
@@ -100,7 +107,9 @@ vector<Mat> pre_process(Mat& input_image, Net& net)
 {
     // Convert to blob.
     Mat blob;
-    blobFromImage(input_image, blob, 1. / 255., Size(INPUT_WIDTH, INPUT_HEIGHT), Scalar(), true, false);
+    blobFromImage(input_image, blob, 1. / 255., Size(YOLO_INPUT_WIDTH, YOLO_INPUT_HEIGHT), Scalar(), true, false);
+    //blobFromImage(input_image, blob, 1. / 255., Size(YOLO_INPUT_WIDTH, YOLO_INPUT_HEIGHT), cv::Scalar(), true, true);
+
     net.setInput(blob);
     vector<Mat> outputs;
     if (!blob.empty()) {
@@ -109,6 +118,7 @@ vector<Mat> pre_process(Mat& input_image, Net& net)
 
     return outputs;
 }
+
 
 Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& class_name)
 {
@@ -126,8 +136,8 @@ Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& c
     float* data = (float*)outputs[0].data;
 
     // Resizing factor.
-    float x_factor = input_image.cols / INPUT_WIDTH;
-    float y_factor = input_image.rows / INPUT_HEIGHT;
+    float x_factor = input_image.cols / YOLO_INPUT_WIDTH;
+    float y_factor = input_image.rows / YOLO_INPUT_HEIGHT;
 
     // Iterate through  detections.
     //cout << "num detections  : " << rows << " " << dimensions << endl;
@@ -141,7 +151,12 @@ Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& c
 
         minMaxLoc(scores, 0, &maxClassScore, 0, &class_id);
 
-        if (maxClassScore > SCORE_THRESHOLD)
+
+        if (class_id.x == 0)
+            int debug = 10;
+
+        float scoreThreshold = (class_id.x == 0) ? PERSON_SCORE_THRESHOLD : SCORE_THRESHOLD;
+        if (maxClassScore > scoreThreshold)
         {
             confidences.push_back(maxClassScore);
             class_ids.push_back(class_id.x);
@@ -185,98 +200,72 @@ Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& c
     return input_image;
 }
 
-int main_yolo8()
-{
-    // Load class list.
-    vector<string> class_list = load_class_list();;
-    Mat frame;
-    VideoCapture cap("Resources/sample.mp4");
-    Net net;
-    load_net_(net, m_isCuda);
-    vector<Mat> detections;
 
-    auto start = std::chrono::high_resolution_clock::now();
-    int frame_count = 0;
-    float fps = -1;
-    int total_frames = 0;
-
-
-    while (1) {
-        cap.read(frame);
-        // Process the image.
-        detections = pre_process(frame, net);
-        //cout << "number of detections : " << detections.size() << endl;
-        Mat img = post_process(frame, detections, class_list);
-        frame_count++;
-        total_frames++;
-        //// Put efficiency information.
-        //// The function getPerfProfile returns the overall time for     inference(t) and the timings for each of the layers(in layersTimes).
-        vector<double> layersTimes;
-        double freq = getTickFrequency() / 1000;
-        double t = net.getPerfProfile(layersTimes) / freq;
-        string label = format("Inference time : %.2f ms", t);
-        putText(img, label, Point(20, 40), FONT_FACE, FONT_SCALE, RED);
-
-        if (frame_count >= 30)
-        {
-
-            auto end = std::chrono::high_resolution_clock::now();
-            fps = frame_count * 1000.0 / std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-
-            frame_count = 0;
-            start = std::chrono::high_resolution_clock::now();
-        }
-
-        if (fps > 0)
-        {
-
-            std::ostringstream fps_label;
-            fps_label << std::fixed << std::setprecision(2);
-            fps_label << "FPS: " << fps;
-            std::string fps_label_str = fps_label.str();
-
-            cv::putText(img, fps_label_str.c_str(), cv::Point(10, 25), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(0, 0, 255), 2);
-        }
-        imshow("Output", img);
-
-        char c = (char)waitKey(1);
-        if (c == 27)
-            break;
-    }
-    cap.release();
-    destroyAllWindows();
-    
-    return 0;
-}
 
 /*--------------------------------------------------------------------------------------------------------------------------
         Main YDetection function:
   --------------------------------------------------------------------------------------------------------------------------*/
 
+bool CYolo8::load_net(bool is_cuda)
+{
+    //std::filesystem::path cwd = std::filesystem::current_path();
+
+    //auto result = cv::dnn::readNet(m_modelFolder + "/yolov5s.onnx");
+    auto result = cv::dnn::readNet(m_modelFolder + modelFName);
+
+    if (result.empty())
+        return false;
+
+    //auto result = cv::dnn::readNet("config_files/yolov5n.onnx");
+    if (is_cuda) {
+        //Beep(1100, 200);
+        std::cout << "Attempty to use CUDA\n";
+        result.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+        result.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA_FP16);// Note the FP16 !!!
+        //result.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);// Note the FP16 !!!
+    }
+    else {
+        std::cout << "Running on CPU\n";
+        result.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+        result.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+    }
+    m_net = result;
+
+    return true;
+}
+
+
 bool CYolo8::init(std::string modelFolder, bool is_cuda)
 {
+#ifdef USE_CUDA
     m_isCuda = is_cuda;
+#else
+    m_isCuda = false;
+#endif 
     m_modelFolder = modelFolder;
-    m_class_list = load_class_list();
+    m_modelFolder.append("/");
+    m_class_list = load_class_list(m_modelFolder + classesFName);
     if (m_class_list.empty()) {
         std::cout << "Error : Empty class list - ML detection won't work! \n";
         return false;
     }
-    return load_net_(m_net, m_isCuda);
+
+    return load_net(m_isCuda);
+    //return load_net_(m_net, m_isCuda);
 }
 
 
 void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
 {
-    //bool is_cuda = true;
-
     vector<int> class_ids;
     vector<float> confidences;
     vector<Rect> boxes;
     vector<Mat> detections;
 
-
     detections = pre_process(frame, m_net);
+
+    if (detections.size() > 0)
+        int debug = 10;
 
     // TEMP CONVERT PARAMS
     cv::Mat input_image = frame;
@@ -292,8 +281,8 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
     float* data = (float*)outputs[0].data;
 
     // Resizing factor.
-    float x_factor = input_image.cols / INPUT_WIDTH;
-    float y_factor = input_image.rows / INPUT_HEIGHT;
+    float x_factor = input_image.cols / YOLO_INPUT_WIDTH;
+    float y_factor = input_image.rows / YOLO_INPUT_HEIGHT;
 
     // Iterate through  detections.
     //cout << "num detections  : " << rows << " " << dimensions << endl;
@@ -307,7 +296,12 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
 
         minMaxLoc(scores, 0, &maxClassScore, 0, &class_id);
 
-        if (maxClassScore > SCORE_THRESHOLD)
+
+        if (class_id.x == 0 && maxClassScore < PERSON_SCORE_THRESHOLD && maxClassScore && PERSON_SCORE_THRESHOLD > PERSON_SCORE_THRESHOLD)
+            int debug = 10;
+
+        float scoreThreshold = (class_id.x == 0) ? PERSON_SCORE_THRESHOLD : SCORE_THRESHOLD;
+        if (maxClassScore > scoreThreshold)
         {
             confidences.push_back(maxClassScore);
             class_ids.push_back(class_id.x);
@@ -325,7 +319,10 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
 
             boxes.push_back(cv::Rect(left, top, width, height));
         }
-
+        else {
+            if (maxClassScore > 0.2)
+                std::cout << " drop low score " << maxClassScore << "\n";
+        }
         data += dimensions; // 85 in 5?
     }
     // Perform Non-Maximum Suppression and draw predictions.
