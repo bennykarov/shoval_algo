@@ -1,7 +1,6 @@
 //============================================================================
 // ConsoleApplication2.cpp : Shoval_sc test app
 //============================================================================
-
 #ifdef _DEBUG
 #pragma comment(lib, "opencv_core470d.lib")
 #pragma comment(lib, "opencv_highgui470d.lib")
@@ -26,14 +25,16 @@
 #include "opencv2/core/core.hpp"
 
 #include "utils.hpp"
+#include "../BauotechAIConnectorDll/files.hpp"
 #include "../BauotechAIConnectorDll/AlgoApi.h"
 #include "../BauotechAIConnectorDll/config.hpp"
 #include "../BauotechAIConnectorDll/timer.hpp"
 
-//typedef std::chrono::duration<float, std::milli> duration;
+//std::string cameraFname = "C:\\Program Files\\Bauotech\\AI\\cameras100.json";
 
 
 // GLOBALS:
+int main_camFileGen(int argc, char* argv[]);
 std::vector <CAlert_> g_cameraInfos;
 
 std::vector <cv::Scalar> g_colors = { cv::Scalar(255,0,0), cv::Scalar(0,255,0), cv::Scalar(0,0,255), cv::Scalar(255,255,0), cv::Scalar(255,0,255), cv::Scalar(0,255,255) , cv::Scalar(155,55,0), cv::Scalar(25,0,55), cv::Scalar(110,155,255) };
@@ -55,7 +56,7 @@ void drawInfo(cv::Mat& img, CAlert_ camInfo)
 /* return cv::waitKey() */
 int draw(int height, int width, char *pData, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, int framenum)
 {
-	static int wait = 1;
+	static int wait = -1;
 	int key;
 
 	cv::Mat frameAfter = cv::Mat(height, width, CV_8UC3, pData);
@@ -64,12 +65,19 @@ int draw(int height, int width, char *pData, std::vector <ALGO_DETECTION_OBJECT_
 	if (!g_cameraInfos.empty())
 		drawInfo(frameAfter, g_cameraInfos[0]); // DDEBUG draw camera[0]
 
+	bool DrawColorPerID = false; // DDEBUG flag
 
-	for (auto obj : AIObjects) {
-		int colorInd = obj.ID % g_colors.size();
-		cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[colorInd], 2);
-		cv::putText(frameAfter, std::to_string(obj.ID), cv::Point(obj.X, obj.Y-5), cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(255, 0, 255));
-	}
+	if (DrawColorPerID)
+		for (auto obj : AIObjects) {
+			int colorInd = obj.ID % g_colors.size();
+			cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[colorInd], 2);
+			cv::putText(frameAfter, std::to_string(obj.ID), cv::Point(obj.X, obj.Y-5), cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(255, 0, 255));
+		}
+	else 
+		for (auto obj : AIObjects) {
+			cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[0], 2);
+		}
+
 
 	////------------------
 	cv::Mat display;
@@ -89,14 +97,6 @@ int draw(int height, int width, char *pData, std::vector <ALGO_DETECTION_OBJECT_
 		wait = -1;
 	else
 		wait = 1;
-
-
-	/*
-	if ((framenum + 5) % 30 == 0) {
-		duration GuiElapsed = endGUI - startGUI;
-		std::cout << "Gui duration = " << GuiElapsed.count() << "\n";
-	}
-	*/
 
 	return key;
 } 
@@ -300,11 +300,79 @@ int main_API(int argc, char* argv[])
 	BauotechAlgoConnector_Release();
 
 }
+
+
+int main_yolo8()
+{
+	// Load class list.
+	vector<string> class_list = load_class_list();;
+	Mat frame;
+	VideoCapture cap("Resources/sample.mp4");
+	Net net;
+	load_net_(net, m_isCuda);
+	vector<Mat> detections;
+
+	auto start = std::chrono::high_resolution_clock::now();
+	int frame_count = 0;
+	float fps = -1;
+	int total_frames = 0;
+
+
+	while (1) {
+		cap.read(frame);
+		// Process the image.
+		detections = pre_process(frame, net);
+		//cout << "number of detections : " << detections.size() << endl;
+		Mat img = post_process(frame, detections, class_list);
+		frame_count++;
+		total_frames++;
+		//// Put efficiency information.
+		//// The function getPerfProfile returns the overall time for     inference(t) and the timings for each of the layers(in layersTimes).
+		vector<double> layersTimes;
+		double freq = getTickFrequency() / 1000;
+		double t = net.getPerfProfile(layersTimes) / freq;
+		string label = format("Inference time : %.2f ms", t);
+		putText(img, label, Point(20, 40), FONT_FACE, FONT_SCALE, RED);
+
+		if (frame_count >= 30)
+		{
+
+			auto end = std::chrono::high_resolution_clock::now();
+			fps = frame_count * 1000.0 / std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+			frame_count = 0;
+			start = std::chrono::high_resolution_clock::now();
+		}
+
+		if (fps > 0)
+		{
+
+			std::ostringstream fps_label;
+			fps_label << std::fixed << std::setprecision(2);
+			fps_label << "FPS: " << fps;
+			std::string fps_label_str = fps_label.str();
+
+			cv::putText(img, fps_label_str.c_str(), cv::Point(10, 25), cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(0, 0, 255), 2);
+		}
+		imshow("Output", img);
+
+		char c = (char)waitKey(1);
+		if (c == 27)
+			break;
+	}
+	cap.release();
+	destroyAllWindows();
+
+	return 0;
+}
 #else
 
-int main(int argc, char* argv[])
+/// ////////////////////////////////////////
+
+
+int main_SHOVAL(int argc, char* argv[])
 {
-	bool ASYNC = true;
+	bool ASYNC = false; // DDEBUG flag 
 
 	std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjectVec;
 	ALGO_DETECTION_OBJECT_DATA AIObjects[MAX_CAMERAS][10];
@@ -352,15 +420,14 @@ int main(int argc, char* argv[])
 	}
 
 	// read camera info - if no ROI - use full frame
-	std::string fname = "C:\\Program Files\\Bauotech\\cameras.json";
 
 
 	// Draw camera ROI
-	readCamerasJson(fname, videoIndex, g_cameraInfos);
-	for (auto camInf : g_cameraInfos)
-		if (camInf.m_polyPoints.empty())
-			camInf.m_polyPoints = { cv::Point(0,0), cv::Point(frame.cols,0), cv::Point(frame.cols,frame.rows), cv::Point(0,frame.rows) };
-
+	readCamerasJson(FILES::CAMERAS_FILE_NAME, videoIndex, g_cameraInfos);
+	for (auto &camInf : g_cameraInfos) {
+		if (camInf.m_polyPoints.empty()  || !camInf.checkPolygon(frame.cols, frame.rows))
+			camInf.m_polyPoints = { cv::Point(0,0), cv::Point(frame.cols-1,0), cv::Point(frame.cols-1,frame.rows-1), cv::Point(0,frame.rows-1) };
+	}
 
 
 	BAUOTECH_AND_BENNY_KAROV_ALGO algo = BAUOTECH_AND_BENNY_KAROV_ALGO::ALGO_SHOVAL;
@@ -399,9 +466,9 @@ int main(int argc, char* argv[])
 
 	for (int _videoIndex = 0; _videoIndex < videosNum; _videoIndex++) {
 		if (ASYNC)
-			BauotechAlgoConnector_Config(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, nullptr, (char*)"C:\\Program Files\\Bauotech\\cameras.json");
+			BauotechAlgoConnector_Config(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, nullptr, (char*)FILES::CAMERAS_FILE_NAME.c_str());
 		else 
-			BauotechAlgoConnector_Config_sync(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, nullptr, (char*)"C:\\Program Files\\Bauotech\\cameras.json");
+			BauotechAlgoConnector_Config_sync(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, nullptr, (char*)FILES::CAMERAS_FILE_NAME.c_str());
 
 		pData[_videoIndex] = (uint8_t*)malloc(image_size);
 		memcpy(pData[_videoIndex], frame.data, image_size);
@@ -415,6 +482,9 @@ int main(int argc, char* argv[])
 		frameNum++;
 	}
 
+	if (1) // DDEBUG
+		cv::imwrite("c:\\tmp\\cameraFrame.png", frame);
+
 	CTimer timer, timer30;
 	timer.start();
 	timer30.start();
@@ -423,10 +493,10 @@ int main(int argc, char* argv[])
 	auto prev = prev30;
 	*/
 	float maxElapsed = 0;
-	//-----------------
-	// Video Main Loop
-	//-----------------
 	int objectsDetected[MAX_CAMERAS];
+	//------------------------------------------------------
+	// Video Main Loop
+	//------------------------------------------------------
 	while (!frame.empty()) {
 		// Algo process:
 		for (int _videoIndex = 0; _videoIndex < videosNum; _videoIndex++) {
@@ -444,14 +514,6 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		// FPS check 
-		//auto curr = std::chrono::system_clock::now();
-
-		/* 
-		duration elapsed = curr - prev;
-		maxElapsed = MAX(maxElapsed, elapsed.count()); // keep max delay
-		prev = curr;
-		*/
 		float elapsed = timer.sample();
 		maxElapsed = MAX(maxElapsed, elapsed); // keep max delay 
 
@@ -512,204 +574,17 @@ int main(int argc, char* argv[])
 
 }
 
-int main_singleCam(int argc, char* argv[])
+
+
+int main(int argc, char* argv[])
 {
-	int cameras_num = 1;
-	std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjectVec;
 
-
-	int frameNum = 0;
-	int skipFrames = 0;
-	std::string videoName;
-
-	if (argc < 2) {
-		std::cout << "Usage: " << argv[0] << " <video file name> [skip frames]\n";
-		return -1;
-	}
-
-	if (argc > 1)
-		videoName = argv[1];
-	if (argc > 2)
-		skipFrames = atoi(argv[2]);
-	bool DrawDetections = true;
-	if (argc > 3)
-		if (toUpper(std::string(argv[3])) == "NODRAW")
-			DrawDetections = false;
-
-
-	cv::VideoCapture cap;
-	cv::Mat frame, _frame;
-
-	if (!cap.open(videoName)) {
-		std::cout << "Can't open file  " << videoName << ")\n";
-		return -1;
-	}
-
-
-	// read first image
-	cv::Rect debugROI(260, 100, 900, 400);
-
-	cap >> _frame;
-	if (0)  // DDEBUG TEST 
-		frame = _frame(debugROI);
+	if (1)
+		return main_SHOVAL(argc, argv);
 	else
-		frame = _frame;
-
-	if (frame.empty()) {
-		std::cout << "Can't capture " << videoName << ")\n";   return -1;
-	}
-
-	// read camera info - if no ROI - use full frame
-	std::string fname = "C:\\Program Files\\Bauotech\\cameras.json";
-
-	int camID = 0; // DDEBUG 
-
-	readCamerasJson(fname, camID, g_cameraInfos);
-	for (auto camInf : g_cameraInfos)
-		if (camInf.m_polyPoints.empty())
-			camInf.m_polyPoints = { cv::Point(0,0), cv::Point(frame.cols,0), cv::Point(frame.cols,frame.rows), cv::Point(0,frame.rows) };
-
-
-	uint32_t videoIndex = 0;
-
-	BAUOTECH_AND_BENNY_KAROV_ALGO algo = BAUOTECH_AND_BENNY_KAROV_ALGO::ALGO_SHOVAL;
-	/*
-	uint8_t* pData = NULL;
-	uint32_t width = 0;
-	uint32_t height = 0;
-	uint32_t pixelWidth = 0; // in Bytes
-	uint32_t image_size = 0;
-	uint8_t youDraw = 0;
-	ALGO_DETECTION_OBJECT_DATA Objects[10];
-	ALGO_DETECTION_OBJECT_DATA* pObjects = &(Objects[0]);
-	uint32_t objectCount = 0;
-	uint32_t* pObjectCount = &objectCount;
-	uint32_t alertCount = 0;
-	uint32_t* pAlertCount = &alertCount;
-	*/
-	// Params (global)
-	uint32_t width = 0;
-	uint32_t height = 0;
-	uint32_t pixelWidth = 0; // in Bytes
-	uint32_t image_size = 0;
-	uint8_t youDraw = 0;
-
-	// Params per camera:
-	uint8_t* pData[MAX_CAMERAS];
-	ALGO_DETECTION_OBJECT_DATA Objects[MAX_CAMERAS][10];
-	ALGO_DETECTION_OBJECT_DATA* pObjects[MAX_CAMERAS];
-	uint32_t objectCount[MAX_CAMERAS];
-	uint32_t* pObjectCount[MAX_CAMERAS];
-	uint32_t alertCount[MAX_CAMERAS];
-	uint32_t* pAlertCount[MAX_CAMERAS];
-
-
-	width = frame.cols;
-	height = frame.rows;
-	image_size = width * height * frame.channels();
-	pixelWidth = frame.channels(); //* 8; // DDEBUG : for opencv  RGB format
-
-	for (int i = 0; i < cameras_num; i++) {
-		pData[i] = (uint8_t*)malloc(image_size);
-		memcpy(pData[i], frame.data, image_size);
-	}
-
-	// Init
-	BauotechAlgoConnector_Init();
-	BauotechAlgoConnector_Config(videoIndex, algo, width, height, pixelWidth, image_size, youDraw, nullptr, (char*)"C:\\Program Files\\Bauotech\\cameras.json");
-
-
-
-	int key = 0;
-	int wait = 1;
-
-	while (frameNum < skipFrames && !frame.empty()) {
-		cap >> _frame;
-		if (0)  // DDEBUG TEST 
-			frame = _frame(debugROI);
-		else
-			frame = _frame;
-
-
-		frameNum++;
-	}
-
-
-	//auto prev = std::chrono::system_clock::now();
-
-	int videoInd = 0;
-
-	//-----------------
-	// Video Main Loop
-	//-----------------
-	while (!frame.empty()) {
-
-		//---------------
-		// Process algo:
-		//---------------
-		for (int videoInd = 0; videoInd < cameras_num; videoInd++) {
-			memcpy(pData[videoInd], frame.data, image_size);
-			BauotechAlgoConnector_Run3(videoInd, pData[videoInd], frameNum); // tsQueue runner
-		}
-
-
-		//-------------------------
-		// Get detection objects:
-		//-------------------------
-		ALGO_DETECTION_OBJECT_DATA AIObjects[MAX_CAMERAS][MAX_OBJECTS];
-		for (int videoInd = 0; videoInd < cameras_num; videoInd++) {
-
-			int objectsDetected = BauotechAlgoConnector_GetAlgoObjectData(videoInd, -1, AIObjects[videoInd]);
-
-			AIObjectVec.clear();
-			for (int i = 0; i < objectsDetected; i++)
-				AIObjectVec.push_back(AIObjects[videoInd][i]);
-		}
-
-		if (frameNum % 60 == 0)
-			for (int videoInd = 0; videoInd < cameras_num; videoInd++) {
-				std::cout << AIObjectVec.size() << " object detected \n";
-			}
-
-
-
-		//-------------------------
-		// DRAW image & detections 
-		//-------------------------
-		videoInd = 0; // use video 0 for display
-
-		if (DrawDetections)
-			key = draw(height, width, (char*)pData[videoInd], AIObjectVec, frameNum);
-		else 
-			key = draw(height, width, (char*)pData[videoInd], std::vector <ALGO_DETECTION_OBJECT_DATA>(), frameNum);
-
-		if (key == 'q' || key == 27)
-			break;
-
-		cap >> _frame;
-		if (0)  // DDEBUG TEST 
-			frame = _frame(debugROI);
-		else
-			frame = _frame;
-
-
-		if (frame.empty()) {
-			cap.set(cv::CAP_PROP_POS_FRAMES, 0); // start again from the beginning
-			cap >> _frame;
-			if (0)  // DDEBUG TEST 
-				frame = _frame(debugROI);
-			else
-				frame = _frame;
-
-		}
-
-
-		frameNum++;
- 
-	}  	// while (!frame.empty())
-
-	// termination
-	BauotechAlgoConnector_Release();
+		return main_camFileGen(argc, argv);
 
 }
+
+
 #endif 
