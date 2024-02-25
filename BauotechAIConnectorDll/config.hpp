@@ -53,7 +53,7 @@ struct Config
 	int motionType = 1;
 	int trackerType = 0;
 	int MLType = 10;
-	float scale = 0.5;
+	float scale = 1.0; // 0.5;
 	int waitKeyTime=1;
 	int record = 0;
 	int demoMode=0;
