@@ -287,6 +287,11 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 				m_camROI = cv::Rect(0, 0, w, h);
 			else {
 				m_camROI = cv::boundingRect(m_camerasInfo[0].m_polyPoints);  // DDEBUG missing Cam ID
+				// Make sure ROI is not smaller than YOLO blob output (causes bad detection)
+				if (m_camROI.width < YOLO_INPUT_WIDTH)
+					m_camROI.width = YOLO_INPUT_WIDTH;
+				if (m_camROI.height < YOLO_INPUT_HEIGHT)
+					m_camROI.height = YOLO_INPUT_HEIGHT;
 				for (auto& point : m_camerasInfo[0].m_polyPoints)
 					point -= m_camROI.tl();
 			}
