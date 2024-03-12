@@ -96,7 +96,7 @@ void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA* pObjects)
 	pObjects->Width = cObject.m_bbox.width;
 	pObjects->Height = cObject.m_bbox.height;
 
-	pObjects->ObjectType = cObject.m_label;
+	pObjects->ObjectType = (int)cObject.m_label;
 }
 
 
@@ -231,8 +231,7 @@ bool CDetector::InitGPU()
 
 	if (!m_yolo.init(m_params.modelFolder,true)) 
 	{
-		std::cout << "Cant init YOLO5 net , quit \n";
-		//std::cout << "Cant init YOLO8 net , quit \n";
+		std::cout << "Cant init YOLO net , quit \n";
 		return false;
 	}
 	return true;
@@ -240,65 +239,97 @@ bool CDetector::InitGPU()
 }
 
 
-bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, char* cameraConfig, float scaleDisplay)
+bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, float scaleDisplay)
 {
-		m_width = w;
-		m_height = h;
-		m_colorDepth = imgSize / (w*h);
-		m_cameraIndex = camIndex;
+	m_width = w;
+	m_height = h;
+	m_colorDepth = imgSize / (w * h);
+	m_cameraIndex = camIndex;
 
-		m_colorDepth = pixelWidth; // in Byte unit / 8;
+	m_colorDepth = pixelWidth; // in Byte unit / 8;
 
-			
-		setConfigDefault(m_params);
-		readConfigFile(FILES::CONFIG_FILE_NAME, m_params);
-		debugSaveParams(w, h, imgSize, pixelWidth, scaleDisplay, m_params);
 
-		if (m_params.useGPU == 0) 
-			m_isCuda = false;
-		else 
-			m_isCuda = checkForGPUs() > 0;	 
+	setConfigDefault(m_params);
+	readConfigFile(FILES::CONFIG_FILE_NAME, m_params);
+	debugSaveParams(w, h, imgSize, pixelWidth, scaleDisplay, m_params);
 
-		// Handle ROI and active polygons:
-		//-------------------------------
-		int camCount = readCamerasJson(cameraConfig, m_camerasInfo , m_cameraIndex);
-		CHECK_exception(camCount > 0, std::string("Error , No camera.json was found in " + std::string(cameraConfig)).c_str());
+	if (m_params.useGPU == 0)
+		m_isCuda = false;
+	else
+		m_isCuda = checkForGPUs() > 0;
+
+	// Handle ROI and active polygons:
+	//-------------------------------
+#ifdef CAMERA_CONFIG
+	int camCount = readCamerasJson(cameraConfig, m_camerasInfo, m_cameraIndex);
+	CHECK_exception(camCount > 0, std::string("Error , No camera.json was found in " + std::string(cameraConfig)).c_str());
+#endif 
+	for (auto& camInf : m_camerasInfo) {
+		if (camInf.m_polyPoints.empty() || !camInf.checkPolygon(w, h)) {
+			//CHECK_warning(false, std::string("Error , No camera.json or bad definitions" + std::string(cameraConfig)).c_str());
+			camInf.m_polyPoints = { cv::Point(0,0), cv::Point(w - 1,0), cv::Point(w - 1,h - 1), cv::Point(0,h - 1) };
+		}
+		camInf.m_bbox = cv::boundingRect(camInf.m_polyPoints);
+
+		m_detectionTypes.push_back((Labels)camInf.m_label);
+	}
+
+	// remove duplicated lables:
+	std::sort(m_detectionTypes.begin(), m_detectionTypes.end());
+	// Remove duplicate values from vector
+	m_detectionTypes.erase(std::unique(m_detectionTypes.begin(), m_detectionTypes.end()), m_detectionTypes.end());
+
+
+
+#if 0
+	if (OLD_ROI) //* OLD ROI setting from config file 
+	{
+		if (m_params.camROI[2] > 0 && m_params.camROI[3] > 0 && m_params.camROI[0] + m_params.camROI[2] < w && m_params.camROI[1] + m_params.camROI[3] < h) {
+			m_camROI = cv::Rect(m_params.camROI[0], m_params.camROI[1], m_params.camROI[2], m_params.camROI[3]);
+		}
+		else
+			m_camROI = cv::Rect(0, 0, w, h);
+	}
+	else // NEW camROI using polygon points:
+	{
+		if (m_camerasInfo[0].m_polyPoints.empty())
+			m_camROI = cv::Rect(0, 0, w, h);
+		else {
+			....
+		}
+
+#endif 
+		//m_camROI = cv::boundingRect(m_camerasInfo[0].m_polyPoints);  // DDEBUG DDEBUG  missing Cam ID INSTEAD OF [0]!
+
+
+		// ROI joined all bboxes of this cfamera 
+		m_camROI = setcamerasROI(m_camerasInfo);
+
 		for (auto& camInf : m_camerasInfo) {
-			if (camInf.m_polyPoints.empty() || !camInf.checkPolygon(w, h)) {
-				CHECK_warning(false, std::string("Error , No camera.json or bad definitions" + std::string(cameraConfig)).c_str());
-				camInf.m_polyPoints = { cv::Point(0,0), cv::Point(w - 1,0), cv::Point(w - 1,h - 1), cv::Point(0,h - 1) };
-			}
+			for (auto& point : camInf.m_polyPoints)
+				point -= m_camROI.tl();
 		}
 
-
-
-		if (OLD_ROI) //* OLD ROI setting from config file 
-		{
-			if (m_params.camROI[2] > 0 && m_params.camROI[3] > 0 && m_params.camROI[0] + m_params.camROI[2] < w && m_params.camROI[1] + m_params.camROI[3] < h) {
-				m_camROI = cv::Rect(m_params.camROI[0], m_params.camROI[1], m_params.camROI[2], m_params.camROI[3]);
+		if (1) // Fix too small ROI 
+			if (m_yolo.getVersion() == 8)
+			{
+				if (m_camROI.width < YOLO8_INPUT_WIDTH)
+					m_camROI.width = YOLO8_INPUT_WIDTH;
+				if (m_camROI.height < YOLO8_INPUT_HEIGHT)
+					m_camROI.height = YOLO8_INPUT_HEIGHT;
 			}
-			else
-				m_camROI = cv::Rect(0, 0, w, h);
-		}
-		else // NEW camROI using polygon points:
-		{
-			// Set ROI according to Polygon + Fix points to ROI
-			if (m_camerasInfo[0].m_polyPoints.empty())
-				m_camROI = cv::Rect(0, 0, w, h);
-			else {
-				m_camROI = cv::boundingRect(m_camerasInfo[0].m_polyPoints);  // DDEBUG missing Cam ID
-				// Make sure ROI is not smaller than YOLO blob output (causes bad detection)
-				if (m_camROI.width < YOLO_INPUT_WIDTH)
-					m_camROI.width = YOLO_INPUT_WIDTH;
-				if (m_camROI.height < YOLO_INPUT_HEIGHT)
-					m_camROI.height = YOLO_INPUT_HEIGHT;
-				for (auto& point : m_camerasInfo[0].m_polyPoints)
-					point -= m_camROI.tl();
+			else if (m_yolo.getVersion() == 5) {
+				if (m_camROI.width < YOLO5_INPUT_WIDTH)
+					m_camROI.width = YOLO5_INPUT_WIDTH;
+				if (m_camROI.height < YOLO5_INPUT_HEIGHT)
+					m_camROI.height = YOLO5_INPUT_HEIGHT;
 			}
-		}
+
+		
+
 
 		for (auto camInf : m_camerasInfo) 
-				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_maxAllowed); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
+				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_maxAllowed, camInf.m_ployID); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
 			//---------------------------------------------------------------------------------------
 
 
@@ -354,6 +385,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 
 		// BG seg detection
 		//--------------------
+		if (0)
 		if (timeForMotion()) {
 			m_bgMask = m_bgSeg.process(frame);
 			if (!m_bgMask.empty()) {
@@ -375,10 +407,14 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 		if (timeForDetection()) {
 			m_yolo.detect(frame, m_Youtput);
 		}
-		
-		//if (m_Youtput.size() > 0)   std::cout << "Yolo detect objects = " << m_Youtput.size() << "\n"; // DDEBUG 
 
-		m_decipher.add(m_BGSEGoutput, m_Youtput, m_frameNum); // add & match
+
+		//std::cout << "YOLO DETECTS : " << m_Youtput.size() << " objects \n";
+
+		if (0) 
+			m_decipher.add(m_BGSEGoutput, m_Youtput, m_frameNum); // add & match
+		else 
+			m_decipher.add(m_Youtput, m_frameNum); // add & match
 
 		m_decipher.track(); // consolidate detected objects 
 
@@ -386,9 +422,11 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 		if (m_params.debugLevel > 1 &&  !m_bgMask.empty())
 			cv::imshow("m_bgMask", m_bgMask);
 
-		int tracked_count;
-		tracked_count = m_decipher.getObjects(-1, Labels::car).size();
+		int tracked_count=0;
+		for (auto label : m_detectionTypes)
+			tracked_count += m_decipher.getObjects(-1, label).size();
 		//tracked_count = m_BGSEGoutput.size();
+
 		return tracked_count;
 	}
 
@@ -406,14 +444,13 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 
 		m_frameROI = m_frameOrg(m_camROI);
 
-		cv::resize(m_frameROI, m_frame, cv::Size(0, 0), m_params.scale, m_params.scale); // performance issues 
+		if (m_params.scale != 1.)
+			cv::resize(m_frameROI, m_frame, cv::Size(0, 0), m_params.scale, m_params.scale); // performance issues 
+		else
+			m_frame = m_frameROI;
 
-		int objects_tracked = 0;
+		int objects_tracked = processFrame(m_frame);
 
-		objects_tracked = processFrame(m_frame);
-
-		if (objects_tracked > 1)
-			int debug = 10;
 
 		if (m_decipher.getObjects(m_frameNum).size() > 0) {
 			if (OLD_ROI) // DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG 
@@ -470,12 +507,8 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize , int pixelWidth, c
 
 		cv::resize(m_frameROI, m_frame, cv::Size(0, 0), m_params.scale, m_params.scale); // performance issues 
 
-		int objects_tracked = 0;
 
-		objects_tracked = processFrame(m_frame);
-
-		if (objects_tracked > 1)
-			int debug = 10;
+		int objects_tracked = processFrame(m_frame);
 
 		if (m_decipher.getObjects(m_frameNum).size() > 0) {
 			sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale);
