@@ -4,7 +4,7 @@
 #include <Windows.h>
 #include <string>
 #include <vector>
-#include <boost/lexical_cast.hpp> 
+//#include <boost/lexical_cast.hpp> 
 
 
 class CTimer {
@@ -12,7 +12,7 @@ public:
 	void  start() {
 		m_start_time = m_cur_time = std::chrono::system_clock::now();
 	}
-	double  sample__() { m_prev_time = m_cur_time;  m_cur_time = std::chrono::system_clock::now(); return (m_cur_time - m_prev_time).count(); }
+	//double  sample__() { m_prev_time = m_cur_time;  m_cur_time = std::chrono::system_clock::now(); return (m_cur_time - m_prev_time).count(); }
 	double  sample()
 	{
 		m_cur_time = std::chrono::system_clock::now();
