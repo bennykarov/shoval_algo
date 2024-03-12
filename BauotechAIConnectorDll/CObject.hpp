@@ -2,7 +2,6 @@
 
 #ifndef COBJECT_HEADER
 #define COBJECT_HEADER
-#include <boost/circular_buffer.hpp>
 #include "config.hpp"
 
 
