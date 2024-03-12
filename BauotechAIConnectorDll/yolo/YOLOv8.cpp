@@ -107,8 +107,8 @@ vector<Mat> pre_process(Mat& input_image, Net& net)
 {
     // Convert to blob.
     Mat blob;
-    blobFromImage(input_image, blob, 1. / 255., Size(YOLO_INPUT_WIDTH, YOLO_INPUT_HEIGHT), Scalar(), true, false);
-    //blobFromImage(input_image, blob, 1. / 255., Size(YOLO_INPUT_WIDTH, YOLO_INPUT_HEIGHT), cv::Scalar(), true, true);
+    bool doCrop = false;
+    blobFromImage(input_image, blob, 1. / 255., Size(YOLO_INPUT_WIDTH, YOLO_INPUT_HEIGHT), Scalar(), true, doCrop);
 
     net.setInput(blob);
     vector<Mat> outputs;
@@ -118,6 +118,7 @@ vector<Mat> pre_process(Mat& input_image, Net& net)
 
     return outputs;
 }
+
 
 
 Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& class_name)
@@ -319,10 +320,8 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
 
             boxes.push_back(cv::Rect(left, top, width, height));
         }
-        else {
-            if (maxClassScore > 0.2)
-                std::cout << " drop low score " << maxClassScore << "\n";
-        }
+        //else if (maxClassScore > 0.2)    std::cout << " drop low score " << maxClassScore << "\n";
+
         data += dimensions; // 85 in 5?
     }
     // Perform Non-Maximum Suppression and draw predictions.

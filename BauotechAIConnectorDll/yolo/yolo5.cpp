@@ -120,7 +120,7 @@ void CYolo5::detect(cv::Mat &image, std::vector<YDetection> &output)
 
     auto input_image = format_yolov5(image);
     
-    cv::dnn::blobFromImage(input_image, blob, 1./255., cv::Size(YOLO_INPUT_WIDTH, YOLO_INPUT_HEIGHT), cv::Scalar(), true, false);
+    cv::dnn::blobFromImage(input_image, blob, 1./255., cv::Size(YOLO5_INPUT_WIDTH, YOLO5_INPUT_HEIGHT), cv::Scalar(), true, false);
     m_net.setInput(blob);
     std::vector<cv::Mat> outputs;
     m_net.forward(outputs, m_net.getUnconnectedOutLayersNames());
@@ -154,8 +154,8 @@ void CYolo5::detect(cv::Mat &image, std::vector<YDetection> &output)
 
     float *data = (float *)outputs[0].data;
 
-    float x_factor = input_image.cols / YOLO_INPUT_WIDTH;
-    float y_factor = input_image.rows / YOLO_INPUT_HEIGHT;
+    float x_factor = input_image.cols / YOLO5_INPUT_WIDTH;
+    float y_factor = input_image.rows / YOLO5_INPUT_HEIGHT;
 
     
     std::vector<int> class_ids;
@@ -243,16 +243,3 @@ void CYolo5::detect(cv::Mat &image,  std::vector<YDetection> &output_all, std::v
 
 }
 
-
-
-static std::vector <std::string> lablesStr = { "person","bicycle","car","motorbike","aeroplane","bus","train","truck","boat" };
-std::string getYoloClassStr(int i)
-{
-    return lablesStr[i];
-}
-int getYoloClassIndex(std::string classStr)
-{
-    auto it = std::find(lablesStr.begin(), lablesStr.end(), classStr);
-    if (it != lablesStr.end())
-        return std::distance(lablesStr.begin(), it);
-}
