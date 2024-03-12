@@ -7,14 +7,23 @@
 #include "utils.hpp"
 #include "timer.hpp"
 #include "config.hpp"
+#include "semaphore.hpp"
+#include "loadBalancer.hpp"
+
 
 
 /*===========================================================================================
-* AlgoProcess (thread) class
+* CAlgoProcess (thread) class
   ===========================================================================================*/
-class algoProcess {
+class CAlgoProcess {
 public:
-	bool init(int video_index, int width, int height, int image_size, int pixelWidth, char * cameraConfig);
+	~CAlgoProcess();
+	bool init(int video_index, int width, int height, int image_size, int pixelWidth);
+	void setRousceSemaphore(CSemaphore *sema) {m_resourceSemaphore = sema;}
+	void addPolygon(int CamID, int polygonId, char* DetectionType, int MaxAllowed, int Polygon[], int polygonSize);
+	void polygonInit(int numberOfPolygons);
+	void initPolygons();
+
 	bool terminate();
 	void setCallback(CameraAICallback callback);
 	void setDrawFlag(int youDraw) { m_youDraw = youDraw; }
@@ -28,10 +37,16 @@ public:
 	  ---------------------------------------------------------------------*/
 	int run(TSBuffQueue* bufQ);
 	int run_th(TSBuffQueue* bufQ);
+	int run(TSBuffQueue* bufQ, CLoadBalaner* loader);
+	int run_th2(TSBuffQueue* bufQ, CLoadBalaner* loader);
 	int run_sync(void* pData, int frameNum, ALGO_DETECTION_OBJECT_DATA* AIobjects);
 	// getters
 
 	void WakeUp();
+
+private:
+	void makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int polygonId);
+
 
 private:
 	std::thread m_thread;
@@ -48,7 +63,9 @@ private:
 	int m_frameNum = -1;
 	int m_videoIndex;
 
-	int m_width, m_height, m_imageSize, m_pixelWidth;
+	int m_width = 0;
+	int m_height = 0;
+	int  m_imageSize, m_pixelWidth;
 	float m_scale;
 
 
@@ -56,6 +73,9 @@ private:
 	int m_youDraw = 0;
 
 	void fakeCallBack(int m_videoIndex, ALGO_DETECTION_OBJECT_DATA* m_pObjects, int m_objectCount, void* ptr, int something);
+
+	std::vector <CAlert> m_camerasInfo;
+	CSemaphore *m_resourceSemaphore=nullptr;
 
 	CTimer m_timer;
 };
