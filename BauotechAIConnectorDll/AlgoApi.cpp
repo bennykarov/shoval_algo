@@ -11,6 +11,7 @@
 #include "AlgoApi.h"
 #include "AlgoDetection.hpp"
 #include "algoProcess.hpp"
+#include "loadBalancer.hpp"
 
 
 typedef struct tagRGB32TRIPLE {
@@ -21,15 +22,11 @@ typedef struct tagRGB32TRIPLE {
 } RGB32TRIPLE;
 
 
-/*
-const int bufferLen = 10;
-boost::circular_buffer<CframeBuffer> g_bufQ2(bufferLen);
-*/
+
 // GLOBALS !
+CLoadBalaner  g_loadBalancer;
 std::ofstream g_debugFile; 
 bool printTime = false;
-//boost::thread	g_algo_Th;
-std::thread	g_algo_Th;
 
 
 // Define a global critical section
@@ -42,7 +39,7 @@ std::unordered_map<uint32_t, CameraAICallback> gAICllbacks;
 // GLOBAL :
 algoProcess   g_algoProcess[MAX_VIDEOS];
 TSBuffQueue g_bufQ[MAX_VIDEOS];
-//uint32_t g_frameNumbers[MAX_VIDEOS];
+CSemaphore  g_ResourceSemaphore;
 
 
 
@@ -56,6 +53,8 @@ API_EXPORT void BauotechAlgoConnector_Init()
 {
 	InitializeCriticalSection(&gCriticalSection);
 
+	g_loadBalancer.setRosourceSemaphore(&g_ResourceSemaphore);
+
 	m_initialize = true;
 }
 
@@ -63,11 +62,20 @@ API_EXPORT void BauotechAlgoConnector_Release()
 {
 	if (m_initialize == true)
 	{
-		for (int i = 0; i < MAX_VIDEOS; i++)
+		for (int i = 0; i < MAX_VIDEOS; i++) {
 			g_algoProcess[i].terminate();
+		}
 
 		DeleteCriticalSection(&gCriticalSection);
 		m_initialize = false;
+	}
+}
+
+API_EXPORT void BauotechAlgoConnector_Release(int videoindex)
+{
+	if (m_initialize == true)
+	{
+			g_algoProcess[videoindex].terminate();
 	}
 }
 
@@ -82,6 +90,7 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int 
 
 }
 
+#if 0
 API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData2(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects, int desiredFrameNum)
 {
 	int frameNum, objectsCount = 0, tries = 10;
@@ -104,20 +113,20 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, ALGO
 	//memcpy(pObjects, &gAlgoObjects[videoIndex], sizeof(ALGO_DETECTION_OBJECT_DATA));
 }
 
-
+#endif 
 
 /*-------------------------------------------------------------------------------------------------------------------
-*  runner use the TSBuffQeue buffering 
+*  runner use the TSBuffQeue buffering
  -------------------------------------------------------------------------------------------------------------------*/
 API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber)
 {
-	//frameNumber = g_frameNumbers[videoIndex]; // count frames inside function, should be counted in caller function!
-	//g_frameNumbers[videoIndex] = frameNumber;
-	//std::cout << "IN frameNumber = " << frameNumber << "\n";	
+	// Machnism to ignore detection on a frame :
+	if (!g_loadBalancer.try_acquire(videoIndex))
+		return 0;
+
 	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, (char*)pData));
 	g_algoProcess[videoIndex].WakeUp();
-	//std::cout << "Wakeup" << "\n";	
-	
+
 	return ok ? 1 : 0;
 
 }
@@ -125,14 +134,34 @@ API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, u
 /*-------------------------------------------------------------------------------------------------------------------
 *  Sync version of run3()
  -------------------------------------------------------------------------------------------------------------------*/
-API_EXPORT int BauotechAlgoConnector_Run3_sync(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA *AIObjects, uint64_t frameNumber)
+API_EXPORT int BauotechAlgoConnector_Run3_sync(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA* AIObjects, uint64_t frameNumber)
 {
 
 	return g_algoProcess[videoIndex].run_sync(pData, frameNumber, AIObjects);
 
 }
 
+API_EXPORT int BauotechAlgoConnector_AddPolygon(uint32_t videoIndex,
+	int CamID,
+	int polygonId,
+	char* DetectionType,
+	int MaxAllowed,
+	int Polygon[],
+	int polygonSize)
+{
 
+	g_algoProcess[videoIndex].addPolygon(CamID, polygonId, DetectionType, MaxAllowed, Polygon, polygonSize);
+	return 1;
+		
+}
+
+  
+int BauotechAlgoConnector_PolygonInit(uint32_t videoIndex, int numberOfPolygons)
+{
+
+	g_algoProcess[videoIndex].polygonInit(numberOfPolygons);
+	return 1;
+}
 
 API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 											BAUOTECH_AND_BENNY_KAROV_ALGO algo,
@@ -141,17 +170,24 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 											uint32_t pixelWidth,
 											uint32_t image_size,
 											uint8_t youDraw,
-											CameraAICallback callback,
-											char *cameraConfig)
+											CameraAICallback callback)
+											
 {
+	if (g_loadBalancer.isActive())
+		g_algoProcess[videoIndex].setRousceSemaphore(&g_ResourceSemaphore);
 
 	int bufSize = 10;
+
+	g_loadBalancer.set(videoIndex, 0); // set default priority (yet not in used priority)
+
 		
 	// Init Queue 
 	g_bufQ[(int)videoIndex].set(width, height, pixelWidth, bufSize);
 	// Init Algo thread
-	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth, cameraConfig))
-		return -1;
+	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth))
+			return -1;
+	//g_algoProcess[videoIndex].setRousceSemaphore(g_ResourceSemaphore)
+	
 	// init callback function 
 	g_algoProcess[videoIndex].setCallback(callback);
 	g_algoProcess[videoIndex].setDrawFlag(int(youDraw));
@@ -171,14 +207,13 @@ API_EXPORT int BauotechAlgoConnector_Config_sync(uint32_t videoIndex,
 	uint32_t pixelWidth,
 	uint32_t image_size,
 	uint8_t youDraw,
-	CameraAICallback callback,
-	char* cameraConfig)
+	CameraAICallback callback)	 
 {
 
 	int bufSize = 10;
 
 	// Init Queue 
-	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth, cameraConfig))
+	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth))
 		return -1;
 
 	// Run Algo thread
@@ -191,48 +226,6 @@ API_EXPORT void BauotechAlgoConnector_SetCameraRequestCallback(CameraRequestCall
 {
 	gCameraRequestCallback = callback;
 }
-
- 
-
-
-
-
-
-// AI Code
-
-/*
-thread{
-     
-	 processIndex1()
-	 {
-	    detection process:
-	     // example:
-		ALGO_DETECTION_OBJECT_DATA aidata[10];
-		aidata[0].X = 200;
-		aidata[0].Y = 200;
-		aidata[0].Width = 500;
-		aidata[0].Height = 400;
-		//.....
-		// CameraAICallback(uint32_t videoIndex, ALGO_DETECTION_OBJECT_DATA* pObjects, uint32_t objectCount, uint8_t* pData, int size);
-
-		uint32_t videoIndex = 0;
-		ALGO_DETECTION_OBJECT_DATA* aidata;
-		uint32_t objectCount = aidata, uint8_t* pData, int size
-		gAICllbacks[videoIndex](videoIndex, aidata, 3, nullptr, 0);
-	 }
-
-
-	 // For stage II - now ALGO gets only first camera by default
-	 //---------------------------------------------------------------
-	// example - call it from different place
-	uint32_t cam[4] = { 1,0,0,4 };
-	gCameraRequestCallback(cam, 4);
-
-}
-
-*/
-
-
 
 
 

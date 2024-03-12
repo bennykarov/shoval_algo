@@ -48,6 +48,14 @@ public:
     int m_maxAllowed = -1;
     cv::Rect  m_bbox;
 public:
+	CAlert_() {}
+	CAlert_(std::vector<cv::Point > polyPoints ,int label ,int maxAllowed)
+	{
+		m_polyPoints = polyPoints;
+		m_label = label;
+		m_maxAllowed = maxAllowed;
+	}
+
 	bool checkPolygon(int width, int height)
 	{
 		for (auto& point : m_polyPoints) {
@@ -87,7 +95,7 @@ public:
 };
 
 
-int readCamerasJson(std::string fname, int camID, std::vector <CAlert_>& cameras);
+//int readCamerasJson(std::string fname, int camID, std::vector <CAlert_>& cameras);
 void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale);
 
 std::string toUpper(std::string str);

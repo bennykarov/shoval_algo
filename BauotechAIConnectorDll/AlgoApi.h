@@ -19,7 +19,8 @@ typedef struct ALGO_DETECTION_OBJECT_DATA
 	int ObjectType; // optional
 	int DetectionPercentage;// optional
 	int frameNum;
-	int ID;  
+	int ID;
+	int polygonID;
 } ALGO_DETECTION_OBJECT_DATA;
 #pragma pack(pop) 
 
@@ -63,31 +64,6 @@ extern "C" {
 
 #define API_EXPORT __declspec(dllexport)
 #endif
-
-
-	API_EXPORT int BauotechAlgoConnector_Run(BAUOTECH_AND_BENNY_KAROV_ALGO algo,
-		uint8_t *pData,
-		uint32_t width,
-		uint32_t height,
-		uint32_t pixelWidth,
-		uint32_t image_size,
-		uint8_t youDraw,
-		ALGO_DETECTION_OBJECT_DATA* pObjects,
-		uint32_t *objectCount);
-
-	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
-	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData2(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects, int frameNum);
-
-	API_EXPORT int BauotechAlgoConnector_Run2(BAUOTECH_AND_BENNY_KAROV_ALGO algo,
-										     uint8_t* pData,
-										     uint32_t width,
-										     uint32_t height,
-											 uint32_t pixelWidth,
-  											 uint32_t image_size,
-											 uint8_t youDraw,
-											 uint32_t* objectCount);
-
-
  
 	 
 	API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
@@ -97,8 +73,22 @@ extern "C" {
 		uint32_t pixelWidth,
 		uint32_t image_size,
 		uint8_t youDraw,
-		CameraAICallback callback,
-		char* cameraConfig);
+		CameraAICallback callback);
+	 
+	API_EXPORT int BauotechAlgoConnector_AddPolygon(uint32_t videoIndex,	 
+													int CamID,
+													int polygonId,
+													char* DetectionType,
+													int MaxAllowed,
+													int Polygon[],
+													int polygonSize);
+
+
+
+
+	API_EXPORT int BauotechAlgoConnector_PolygonInit(uint32_t videoIndex, int numberOfPolygons);
+	
+
 
 	API_EXPORT int BauotechAlgoConnector_Config_sync(uint32_t videoIndex,
 		BAUOTECH_AND_BENNY_KAROV_ALGO algo,
@@ -107,11 +97,13 @@ extern "C" {
 		uint32_t pixelWidth,
 		uint32_t image_size,
 		uint8_t youDraw,
-		CameraAICallback callback,
-		char* cameraConfig);
+		CameraAICallback callback);
 
 	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber);
 	API_EXPORT int BauotechAlgoConnector_Run3_sync(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA* AIObjects, uint64_t frameNumber);
+	API_EXPORT int BauotechAlgoConnector_Run3_try(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA* AIObjects, uint64_t frameNumber);
+
+	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
 
 
 	API_EXPORT void BauotechAlgoConnector_Init();

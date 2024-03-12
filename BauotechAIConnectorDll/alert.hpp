@@ -12,8 +12,8 @@
 class CAlert {
 public:
 	CAlert() {}
-	CAlert(std::vector<cv::Point > contour, int label, int max_allowed) { set(contour, label, max_allowed); }
-	void	set(std::vector<cv::Point > contour, int label, int max_allowed);
+	CAlert(std::vector<cv::Point > contour, int label, int max_allowed, int ployID) { set(contour, label, max_allowed, ployID); }
+	void	set(std::vector<cv::Point > contour, int label, int max_allowed, int ployID);
 
 	int		Siren(std::vector <CObject> objects);
 	std::vector <CObject> selectObjects(std::vector <CObject> objects);
@@ -34,6 +34,7 @@ public:
 
 public:
 	int m_camID;
+	int m_ployID;
 	std::vector<cv::Point > m_polyPoints;
 	//std::tuple <int,int> label_allowed;
 	int m_label;
@@ -44,6 +45,7 @@ public:
 
 
 int readCamerasJson(std::string fname, std::vector <CAlert>& cameras, int cameraIndex);
+cv::Rect setcamerasROI(std::vector <CAlert>& cameras);
 
 
 #endif 
