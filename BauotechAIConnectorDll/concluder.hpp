@@ -24,6 +24,7 @@ public:
 	void setPersonDim(cv::Size dim) { m_maxPresonDim = dim; } // max person size in pixels
 	void setObjectDim(cv::Size dim) { m_maxObjectDim = dim; } // max person size in pixels
 	void add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum);
+	void addYoloOnly(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum);
 	void add(std::vector <YDetection> YoloOutput,int frameNum);
 	int track();
 	std::vector <CObject> getObjects(int frameNum, Labels label = Labels::nonLabled); //  { return m_goodObjects; }
@@ -38,9 +39,9 @@ public:
 	CObject get(int i) { return m_objects[i].back(); }
 	int  numberOfPersonsOnBoard(); // return number of person on board (including hidden objects)
 
-	void	set(std::vector<cv::Point> contour, int label, int max_allowed)
+	void	set(std::vector<cv::Point> contour, int label, int max_allowed, int ployID)
 	{
-		m_alerts.push_back(CAlert(contour, label, max_allowed));
+		m_alerts.push_back(CAlert(contour, label, max_allowed, ployID));
 	}
 
 	int Siren();

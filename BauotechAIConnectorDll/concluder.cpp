@@ -15,6 +15,34 @@
 
 void CDecipher::init(int debugLevel) { m_debugLevel = debugLevel; 	m_active = true; }
 
+void CDecipher::addYoloOnly(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum)
+{
+	if (!m_active)
+		return;
+
+	std::vector <int> matchInds;
+
+	m_frameNum = frameNum;
+	// Add YOLO object - match to BGSeg objects (if does)
+	//----------------------------------------------------
+	if (YoloOutput.empty() && m_objects.size() > 0 && m_objects.back().size() == 1) // DDEBUG - leave prev detection , assume YOLO runs every second frame!!!!
+		return;
+	m_objects.clear(); // start from scratch every frame
+	for (auto Yobj : YoloOutput) {
+		CObject newObj(Yobj.box, frameNum, 0, DETECT_TYPE::ML, (Labels)Yobj.class_id);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
+
+		// New object
+		newObj.m_ID = m_UniqueID++;
+		m_objects.push_back(std::vector <CObject>());
+		m_objects.back().push_back(newObj);
+		if (newObj.m_label == Labels::person)
+			int debug = 10;
+
+	}
+
+}
+
+
 void CDecipher::add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum)
 {
 	if (!m_active)
@@ -47,7 +75,7 @@ void CDecipher::add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection
 	for (auto Yobj : YoloOutput) {
 		CObject newObj(Yobj.box, frameNum, 0, DETECT_TYPE::ML, (Labels)Yobj.class_id);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
 
-		int ind = bestMatch(Yobj.box, 0.3);
+		int ind = bestMatch(Yobj.box, 0.3, matchInds);
 		if (ind >= 0) {
 			newObj.m_ID = m_objects[ind].back().m_ID;
 			m_objects[ind].push_back(newObj);
@@ -66,15 +94,44 @@ void CDecipher::add(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection
 	}
 
 
-	if (frameNum == 88)
-		int debug = 10;
-
 	int rem = pruneObjects();
 
 }
-
 void CDecipher::add(std::vector <YDetection> YoloOutput, int frameNum)
 {
+	if (!m_active)
+		return;
+
+	std::vector <int> matchInds;
+
+	m_frameNum = frameNum;
+	// Add the new BGSeg object - match to current BGSeg objects (if does)
+	// Ignore those were matched with YOLO objects 
+	//-------------------------------------------------------------------------
+
+	// Add YOLO object - match to BGSeg objects (if does)
+	//----------------------------------------------------
+	for (auto Yobj : YoloOutput) {
+		CObject newObj(Yobj.box, frameNum, 0, DETECT_TYPE::ML, (Labels)Yobj.class_id);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
+
+		int ind = bestMatch(Yobj.box, 0.3, matchInds);
+		if (ind >= 0) {
+			newObj.m_ID = m_objects[ind].back().m_ID;
+			m_objects[ind].push_back(newObj);
+			matchInds.push_back(ind);
+		}
+		else {
+			// New object
+			newObj.m_ID = m_UniqueID++;
+			m_objects.push_back(std::vector <CObject>());
+			m_objects.back().push_back(newObj);
+			if (newObj.m_label == Labels::person)
+				int debug = 10;
+		}
+	}
+
+
+	int rem = pruneObjects(); // remove "old "old" hidden objects 
 }
 
 
@@ -159,15 +216,15 @@ std::vector <CObject> CDecipher::getObjects_(int frameNum)
 ---------------------------------------------------------------------------*/
 std::vector <CObject> CDecipher::getObjects(int frameNum, Labels  label)
 {
-	std::vector <CObject> personObjects;
+	std::vector <CObject> labeledObjects;
 
 	if (label == Labels::nonLabled)
 		return m_detectedObjects;
 
-	std::copy_if(m_detectedObjects.begin(), m_detectedObjects.end(), std::back_inserter(personObjects),
+	std::copy_if(m_detectedObjects.begin(), m_detectedObjects.end(), std::back_inserter(labeledObjects),
 		[label](CObject obj) { return obj.m_label == label; });
 
-	return personObjects;
+	return labeledObjects;
 }
 
 /*---------------------------------------------------------------------------
