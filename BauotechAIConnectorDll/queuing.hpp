@@ -5,9 +5,7 @@
 #include <mutex> 
 #include <queue> 
 
-
-
-#include <boost/circular_buffer.hpp>
+//#include <boost/circular_buffer.hpp>
 
 
 class CframeBuffer {
@@ -48,7 +46,7 @@ private:
 
     int ptrNext(int ptr);
 
-    boost::circular_buffer<int> m_queueIndex;
+    //boost::circular_buffer<int> m_queueIndex;
     int getQueueSize();
      
 
