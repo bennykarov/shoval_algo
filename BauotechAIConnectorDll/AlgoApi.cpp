@@ -11,6 +11,9 @@
 #include "AlgoApi.h"
 #include "AlgoDetection.hpp"
 #include "algoProcess.hpp"
+#include "files.hpp"
+#include "logger.hpp"
+
 #include "loadBalancer.hpp"
 
 
@@ -23,10 +26,8 @@ typedef struct tagRGB32TRIPLE {
 
 
 
-// GLOBALS !
-CLoadBalaner  g_loadBalancer;
-std::ofstream g_debugFile; 
-bool printTime = false;
+//--------------------------------------------------------------------------------------------------------
+//  G L O B A L S   !
 
 
 // Define a global critical section
@@ -36,14 +37,21 @@ CameraRequestCallback gCameraRequestCallback = nullptr; // moved from header fil
 
 std::unordered_map<uint32_t, CameraAICallback> gAICllbacks;
 
-// GLOBAL :
-algoProcess   g_algoProcess[MAX_VIDEOS];
-TSBuffQueue g_bufQ[MAX_VIDEOS];
+
+/*
+static std::shared_ptr<CSemaphore> g_ResourceSemaphore = std::make_shared<CSemaphore>();
+static std::shared_ptr<CLoadBalaner> g_loadBalancer = std::make_shared<CLoadBalaner>();
+*/
+
+CLoadBalaner  g_loadBalancer;
 CSemaphore  g_ResourceSemaphore;
+CAlgoProcess   g_algoProcess[MAX_VIDEOS];
+TSBuffQueue g_bufQ[MAX_VIDEOS];
+//--------------------------------------------------------------------------------------------------------
 
 
 
-/*===========================================================================================*/
+
 API_EXPORT void AlgoSetTime(int hour, int min, int sec)
 {
 
@@ -52,6 +60,8 @@ API_EXPORT void AlgoSetTime(int hour, int min, int sec)
 API_EXPORT void BauotechAlgoConnector_Init()
 {
 	InitializeCriticalSection(&gCriticalSection);
+
+	LOGGER::init(FILES::OUTPUT_FOLDER_NAME, 1);
 
 	g_loadBalancer.setRosourceSemaphore(&g_ResourceSemaphore);
 
@@ -90,30 +100,6 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int 
 
 }
 
-#if 0
-API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData2(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects, int desiredFrameNum)
-{
-	int frameNum, objectsCount = 0, tries = 10;
-
-	do {
-		objectsCount = g_algoProcess[videoIndex].getObjectData(videoIndex, index, pObjects, frameNum);
-		Sleep(2);	
-		std::cout << " wait for Detection proper frame \n";
-	} while (--tries > 0 && frameNum != desiredFrameNum);
-
-	return (tries > 0 ?  objectsCount : 0);
-
-
-}
-
-API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, ALGO_DETECTION_OBJECT_DATA* pObjects, uint32_t* objectCount)
-{
-	int frameNum;
-	return g_algoProcess[videoIndex].getObjectData(videoIndex, -1, pObjects, frameNum);
-	//memcpy(pObjects, &gAlgoObjects[videoIndex], sizeof(ALGO_DETECTION_OBJECT_DATA));
-}
-
-#endif 
 
 /*-------------------------------------------------------------------------------------------------------------------
 *  runner use the TSBuffQeue buffering
@@ -121,8 +107,16 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, ALGO
 API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber)
 {
 	// Machnism to ignore detection on a frame :
-	if (!g_loadBalancer.try_acquire(videoIndex))
-		return 0;
+	if (g_loadBalancer.isActive()) {
+		if (!g_loadBalancer.try_acquire(videoIndex)) {
+			LOGGER::log(std::string("Load balancer REJECT camera " + std::to_string(videoIndex)) + \
+				"(P=" + std::to_string((int)g_loadBalancer.getPriority(videoIndex)) + " ; R= " + std::to_string(g_ResourceSemaphore.get()) + ")");
+			return 0;
+		}
+
+		LOGGER::log(std::string("Load balancer ALLOW camera " + std::to_string(videoIndex)) + \
+			"(P=" + std::to_string((int)g_loadBalancer.getPriority(videoIndex)) + " ; R= " + std::to_string(g_ResourceSemaphore.get()) + ")");
+	}
 
 	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, (char*)pData));
 	g_algoProcess[videoIndex].WakeUp();
@@ -186,17 +180,15 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 	// Init Algo thread
 	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth))
 			return -1;
-	//g_algoProcess[videoIndex].setRousceSemaphore(g_ResourceSemaphore)
-	
+
+
 	// init callback function 
 	g_algoProcess[videoIndex].setCallback(callback);
 	g_algoProcess[videoIndex].setDrawFlag(int(youDraw));
 
-	/*for (auto &frameNum : g_frameNumbers)
-		frameNum = 0;*/
-
 	// Run Algo thread
-	g_algoProcess[videoIndex].run(&g_bufQ[(int)videoIndex]);
+	//g_algoProcess[videoIndex].run(&g_bufQ[(int)videoIndex]);
+	g_algoProcess[videoIndex].run(&g_bufQ[(int)videoIndex], &g_loadBalancer);
 	return 1;
 }
  
