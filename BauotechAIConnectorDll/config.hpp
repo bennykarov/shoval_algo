@@ -1,7 +1,7 @@
 #pragma once
 
 
-#define MAX_OBJECTS 20 
+#define MAX_OBJECTS 30 
 #define MAX_CAMERAS 10 
 
 namespace CONSTANTS {
@@ -17,7 +17,7 @@ namespace CONSTANTS {
 	// NEWs
 	int const DEFAULT_SKIP_FRAMES_BGSEG = 1;
 	int const DEFAULT_SKIP_FRAMES_IN_MOTION_YOLO = 2;//  2; // Process yolo in case motion was detected 
-	int const DEFAULT_SKIP_FRAMES_YOLO = 30; // 10;   // Process yolo in constant intervals 
+	int const DEFAULT_SKIP_FRAMES_YOLO = 2; // 10;   // Process yolo in constant intervals 
 
 };
 
@@ -40,17 +40,18 @@ struct Config
 
 	std::string modelFolder = "../BauoSafeZone/config_files/";
 	//int showTime = 1;
-	int showTruck = 0;
+	//int showTruck = 0;
 	int showMotion = 0;
 	int debugLevel = 0;
 	float displayScale = 1.;
 	// OPtimization
 	int skipMotionFrames = CONSTANTS::DEFAULT_SKIP_FRAMES_BGSEG;
 	int skipDetectionFramesInMotion = CONSTANTS::DEFAULT_SKIP_FRAMES_IN_MOTION_YOLO; // in case  motion was detected
-	int skipDetectionFrames = CONSTANTS::DEFAULT_SKIP_FRAMES_YOLO; // in case  motion was detected 
-	//int detectionInterval = CONSTANTS::DEFAULT_INTERVAL_FRAMES_YOLO; // in case NO motion was detected 
+	
+	int skipDetectionFrames = CONSTANTS::DEFAULT_SKIP_FRAMES_YOLO; 
+	
 	// Algo
-	int motionType = 1;
+	int motionType = 2;
 	int trackerType = 0;
 	int MLType = 10;
 	float scale = 1.0; // 0.5;

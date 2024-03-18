@@ -150,10 +150,9 @@ API_EXPORT int BauotechAlgoConnector_AddPolygon(uint32_t videoIndex,
 }
 
   
-int BauotechAlgoConnector_PolygonInit(uint32_t videoIndex, int numberOfPolygons)
+int BauotechAlgoConnector_PolygonClear(uint32_t videoIndex)
 {
-
-	g_algoProcess[videoIndex].polygonInit(numberOfPolygons);
+	g_algoProcess[videoIndex].polygonClear();
 	return 1;
 }
 
@@ -170,12 +169,12 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 	if (g_loadBalancer.isActive())
 		g_algoProcess[videoIndex].setRousceSemaphore(&g_ResourceSemaphore);
 
-	int bufSize = 10;
 
 	g_loadBalancer.set(videoIndex, 0); // set default priority (yet not in used priority)
 
 		
 	// Init Queue 
+	int bufSize = 3;
 	g_bufQ[(int)videoIndex].set(width, height, pixelWidth, bufSize);
 	// Init Algo thread
 	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth))
@@ -187,7 +186,6 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 	g_algoProcess[videoIndex].setDrawFlag(int(youDraw));
 
 	// Run Algo thread
-	//g_algoProcess[videoIndex].run(&g_bufQ[(int)videoIndex]);
 	g_algoProcess[videoIndex].run(&g_bufQ[(int)videoIndex], &g_loadBalancer);
 	return 1;
 }

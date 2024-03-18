@@ -900,7 +900,43 @@ std::string FILE_UTILS::find_fname(const std::string  filename)
 	  return (ratio >= absRatio );
   }
 
+  bool similarBox(cv::Rect r1, cv::Rect r2, float absRatio)
+  {
+	  float ratio = (float)r1.width / (float)r2.width;
+	  if (ratio > 1.)
+		  ratio = 1. / ratio;
+	  if (ratio < absRatio)
+		  return false;
+	  ratio = (float)r1.height / (float)r2.height;
+	  if (ratio > 1.)
+		  ratio = 1. / ratio;
+	  if (ratio < absRatio)
+		  return false;
 
+	  return true;
+  }
+  
+  float similarBox(cv::Rect r1, cv::Rect r2)
+  {
+	  float ratioW = (float)r1.width / (float)r2.width;
+	  if (ratioW > 1.)
+		  ratioW = 1. / ratioW;
+
+
+	  float ratioH = (float)r1.height / (float)r2.height;
+	  if (ratioH > 1.)
+		  ratioH = 1. / ratioH;
+
+	  return (ratioW + ratioH) / 2.;
+  }
+
+
+  float relativeDist(cv::Rect box1, cv::Rect box2)
+  {
+	  float dist = distance(box1, box2);
+	  float dim = (float(box1.width + box2.width) / 2. + float(box1.height + box2.height) / 2.) / 2.;
+	  return (dist / dim);
+  }
 
   int depth2cvType(int depth)
   {

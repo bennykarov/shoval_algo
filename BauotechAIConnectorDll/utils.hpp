@@ -89,6 +89,9 @@ inline bool isEmpty(cv::RotatedRect rr) { return (rr.size.width == 0 || rr.size.
 inline bool isEmpty(cv::Rect2f r) { return (r.width == 0 || r.height == 0); }
 cv::Rect resize(cv::Rect r, cv::Size newDim); 
 bool similarAreas(cv::Rect r1, cv::Rect r2, float absRatio);
+bool similarBox(cv::Rect r1, cv::Rect r2, float absRatio);
+float similarBox(cv::Rect r1, cv::Rect r2);
+float relativeDist(cv::Rect box1, cv::Rect box2);
 
  using namespace std;
 
@@ -103,7 +106,19 @@ bool similarAreas(cv::Rect r1, cv::Rect r2, float absRatio);
 		 cv::line(img, cv::Point(r.br().x, r.tl().y), cv::Point(r.tl().x, r.br().y), color, thickness);
 	 };
 
-	 static void   checkBounderies(cv::Rect  &box, cv::Size imgSize)
+	 static void   checkBounderies(cv::Rect& box, cv::Size imgSize)
+	 {
+		 if (box.x < 0)
+			 box.x = 0;
+		 if (box.y < 0)
+			 box.y = 0;
+		 if (box.x + box.width >= imgSize.width)
+			 box.width = imgSize.width - box.x - 1;
+		 if (box.y + box.height >= imgSize.height)
+			 box.height = imgSize.height - box.y - 1;
+	 }
+
+	 static void   checkBounderies(cv::Rect2d& box, cv::Size imgSize)
 	 {
 		 if (box.x < 0)
 			 box.x = 0;

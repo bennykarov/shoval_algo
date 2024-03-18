@@ -103,7 +103,7 @@ void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA* pObjects)
 void setConfigDefault(Config &params)
 {
 	params.debugLevel = 0;
-	params.showTruck = 0;
+	//params.showTruck = 0;
 	params.modelFolder = "C:/SRC/BauoSafeZone/config_files/";
 	params.motionType = 1;
 	params.MLType = 10;
@@ -131,13 +131,14 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 	conf.record = pt.get<int>("GENERAL.record", conf.record);
 	conf.demoMode = pt.get<int>("GENERAL.demo", conf.demoMode);
 	conf.debugLevel = pt.get<int>("GENERAL.debug", conf.debugLevel);
-	conf.showTruck = pt.get<int>("GENERAL.showTruck", conf.showTruck);
+	//conf.showTruck = pt.get<int>("GENERAL.showTruck", conf.showTruck);
 	conf.showMotion = pt.get<int>("GENERAL.showMotion", conf.showMotion);
 	conf.camROI = to_array<int>(pt.get<std::string>("GENERAL.camROI", "0,0,0,0"));
 	// [OPTIMIZE]  Optimization
 	conf.skipMotionFrames = pt.get<int>("ALGO.stepMotion", conf.skipMotionFrames);
 	conf.skipDetectionFrames = pt.get<int>("ALGO.stepDetection", conf.skipDetectionFrames);
 	conf.skipDetectionFramesInMotion = pt.get<int>("ALGO.stepDetectionInMotion", conf.skipDetectionFramesInMotion);
+	conf.skipDetectionFramesInMotion = pt.get<int>("ALGO.stepTracking", conf.skipDetectionFramesInMotion);
 	//---------
 	// ALGO:
 	//---------
@@ -260,10 +261,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 	// Handle ROI and active polygons:
 	//-------------------------------
-#ifdef CAMERA_CONFIG
-	int camCount = readCamerasJson(cameraConfig, m_camerasInfo, m_cameraIndex);
-	CHECK_exception(camCount > 0, std::string("Error , No camera.json was found in " + std::string(cameraConfig)).c_str());
-#endif 
 	for (auto& camInf : m_camerasInfo) {
 		if (camInf.m_polyPoints.empty() || !camInf.checkPolygon(w, h)) {
 			//CHECK_warning(false, std::string("Error , No camera.json or bad definitions" + std::string(cameraConfig)).c_str());
@@ -280,54 +277,30 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 	m_detectionTypes.erase(std::unique(m_detectionTypes.begin(), m_detectionTypes.end()), m_detectionTypes.end());
 
 
+	// ROI joined all bboxes of this cfamera 
+	m_camROI = setcamerasROI(m_camerasInfo);
 
-#if 0
-	if (OLD_ROI) //* OLD ROI setting from config file 
-	{
-		if (m_params.camROI[2] > 0 && m_params.camROI[3] > 0 && m_params.camROI[0] + m_params.camROI[2] < w && m_params.camROI[1] + m_params.camROI[3] < h) {
-			m_camROI = cv::Rect(m_params.camROI[0], m_params.camROI[1], m_params.camROI[2], m_params.camROI[3]);
-		}
-		else
-			m_camROI = cv::Rect(0, 0, w, h);
+	for (auto& camInf : m_camerasInfo) {
+		for (auto& point : camInf.m_polyPoints)
+			point -= m_camROI.tl();
 	}
-	else // NEW camROI using polygon points:
-	{
-		if (m_camerasInfo[0].m_polyPoints.empty())
-			m_camROI = cv::Rect(0, 0, w, h);
-		else {
-			....
+
+	if (0) // Fix too small ROI 
+		if (m_yolo.getVersion() == 8)
+		{
+			if (m_camROI.width < YOLO8_INPUT_WIDTH)
+				m_camROI.width = YOLO8_INPUT_WIDTH;
+			if (m_camROI.height < YOLO8_INPUT_HEIGHT)
+				m_camROI.height = YOLO8_INPUT_HEIGHT;
 		}
-
-#endif 
-		//m_camROI = cv::boundingRect(m_camerasInfo[0].m_polyPoints);  // DDEBUG DDEBUG  missing Cam ID INSTEAD OF [0]!
-
-
-		// ROI joined all bboxes of this cfamera 
-		m_camROI = setcamerasROI(m_camerasInfo);
-
-		for (auto& camInf : m_camerasInfo) {
-			for (auto& point : camInf.m_polyPoints)
-				point -= m_camROI.tl();
-		}
-
-		if (1) // Fix too small ROI 
-			if (m_yolo.getVersion() == 8)
-			{
-				if (m_camROI.width < YOLO8_INPUT_WIDTH)
-					m_camROI.width = YOLO8_INPUT_WIDTH;
-				if (m_camROI.height < YOLO8_INPUT_HEIGHT)
-					m_camROI.height = YOLO8_INPUT_HEIGHT;
-			}
-			else if (m_yolo.getVersion() == 5) {
-				if (m_camROI.width < YOLO5_INPUT_WIDTH)
-					m_camROI.width = YOLO5_INPUT_WIDTH;
-				if (m_camROI.height < YOLO5_INPUT_HEIGHT)
-					m_camROI.height = YOLO5_INPUT_HEIGHT;
-			}
+		else if (m_yolo.getVersion() == 5) {
+			if (m_camROI.width < YOLO5_INPUT_WIDTH)
+				m_camROI.width = YOLO5_INPUT_WIDTH;
+			if (m_camROI.height < YOLO5_INPUT_HEIGHT)
+				m_camROI.height = YOLO5_INPUT_HEIGHT;
+}
 
 		
-
-
 		for (auto camInf : m_camerasInfo) 
 				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_maxAllowed, camInf.m_ployID); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
 			//---------------------------------------------------------------------------------------
@@ -346,17 +319,29 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 		}
 
 		// MOG2 
-		if (m_params.motionType > 0)
-		{
+		if (m_params.motionType ==  1)  {
 			int emphasize = CONSTANTS::MogEmphasizeFactor;
 			m_bgSeg.init(m_params.MHistory, m_params.MvarThreshold, false, emphasize, m_isCuda);
 			m_bgSeg.setLearnRate(m_params.MlearningRate);
 		}	
-
-		if (1) {
-			m_decipher.init(m_params.debugLevel);
-			m_decipher.setPersonDim(MAX_PERSON_DIM); // DDEBUG CONST
+		/*
+		else if (m_params.motionType > 1 && m_params.motionType < 7) {
+			m_tracker.init(0, 1);
 		}
+		else if (m_params.motionType == 3) {
+			m_tracker.init(3, 1);
+		}
+		else if (m_params.motionType == 4) {
+			m_tracker.init(4, 1);
+		}
+		*/
+
+		int debugLevel = 1;
+		m_tracker.init(m_params.trackerType, debugLevel);
+		
+		m_decipher.init(m_params.debugLevel);
+		m_decipher.setPersonDim(MAX_PERSON_DIM); // DDEBUG CONST
+
 
 
 		// Alloce buffer
@@ -385,7 +370,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		// BG seg detection
 		//--------------------
-		if (0)
+#if 0
 		if (timeForMotion()) {
 			m_bgMask = m_bgSeg.process(frame);
 			if (!m_bgMask.empty()) {
@@ -400,23 +385,61 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 			}
 		}
+#endif 
 
 		// YOLO detection
 		//--------------------
 		m_Youtput.clear();
 		if (timeForDetection()) {
+			cv::Mat frameEnhanced; // DDEBUG TEST 
 			m_yolo.detect(frame, m_Youtput);
+		}
+
+		m_TrackerOutput.clear();
+		if (timeForTracking()) {
+			m_tracker.track(frame, m_TrackerOutput);
 		}
 
 
 		//std::cout << "YOLO DETECTS : " << m_Youtput.size() << " objects \n";
 
-		if (0) 
-			m_decipher.add(m_BGSEGoutput, m_Youtput, m_frameNum); // add & match
-		else 
-			m_decipher.add(m_Youtput, m_frameNum); // add & match
+		//m_decipher.add(m_BGSEGoutput, m_Youtput, m_frameNum); 
+		//m_decipher.add(m_Youtput, m_frameNum); 
+		// add & match , also remove duplicated from 'm_TrackerOutput'
+		std::vector <int>   duplicateInds = m_decipher.add(m_TrackerOutput, m_Youtput, m_frameNum); 
 
-		m_decipher.track(); // consolidate detected objects 
+		int mode = timeForDetection() ? 1 : 0;
+		m_decipher.track2(mode);
+
+		//----------------------
+		// update tracker ROIs:
+		//----------------------
+		
+		//-------------------------------------------------------------
+		// Set fresh ROIs  to tracker (in case YOLO succeed to detect)
+		//-------------------------------------------------------------
+		if (m_Youtput.size() > 0) {
+			//--------------------------------------------------
+			// Set Tracker with fresh YOLO detection boxes,- 
+			// leave the ones was not detected by YOLO
+			//--------------------------------------------------
+			m_tracker.clear(); // remove all ROIs
+			// Remove duplicated ROI trackers 
+			//else if (duplicateInds.size() > 0) 		m_tracker.clear(duplicateInds);
+
+			std::vector <cv::Rect> bboxes;
+			std::vector <int> objIDs , labels;
+
+			// Add Tracker with all current detections 
+			for (auto label : m_detectionTypes)
+				for (auto obj : m_decipher.getObjects(label)) {
+					bboxes.push_back(obj.m_bbox);
+					objIDs.push_back(obj.m_ID);
+					labels.push_back(obj.m_label);
+				}
+
+			m_tracker.setROIs(bboxes, objIDs, labels, m_frame);
+		}
 
 
 		if (m_params.debugLevel > 1 &&  !m_bgMask.empty())
@@ -424,8 +447,22 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		int tracked_count=0;
 		for (auto label : m_detectionTypes)
-			tracked_count += m_decipher.getObjects(-1, label).size();
+			tracked_count += m_decipher.getObjects(label).size();
 		//tracked_count = m_BGSEGoutput.size();
+
+#if 0
+		if (m_frameNum == 2400000)
+		{
+			// Provide YOLO detection ROIs to tracker:
+			std::vector <cv::Rect> ROIs_totrack;
+			std::vector <int> objIDs_totrack;
+			for (auto obj : m_Youtput) {
+				ROIs_totrack.push_back(obj.box); // getprev 
+				objIDs_totrack.push_back(obj.id)
+			}
+			m_tracker.setROIs(ROIs_totrack, m_frame, m_frameNum);
+		}
+#endif 
 
 		return tracked_count;
 	}
@@ -451,38 +488,25 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		int objects_tracked = processFrame(m_frame);
 
+		m_cycleNum++; // count actual processed frame cycles for timeForDetection(), timeForMotion(), timeForTracking()
 
-		if (m_decipher.getObjects(m_frameNum).size() > 0) {
-			if (OLD_ROI) // DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG 
-				sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale);
-			else {
-				sirenObjs = m_decipher.getSirenObjects(1.);
-				//sirenObjs = m_decipher.getObjects(m_frameNum);
 
-				// scale back to original image size:
-				for (auto& obj : sirenObjs) {
-					obj.m_bbox = scaleBBox(obj.m_bbox, 1. / m_params.scale);
-					obj.m_bbox.x += m_camROI.x;
-					obj.m_bbox.y += m_camROI.y;
-				}
+		if (m_decipher.getObjects().size() > 0) {
+
+			sirenObjs = m_decipher.getSirenObjects(1.);
+
+			// scale back to original image size:
+			for (auto& obj : sirenObjs) {
+				obj.m_bbox = scaleBBox(obj.m_bbox, 1. / m_params.scale);
+				obj.m_bbox.x += m_camROI.x;
+				obj.m_bbox.y += m_camROI.y;
 			}
-			
+
 
 			for (int k = 0; k < sirenObjs.size(); k++)
 				cObject_2_pObject(sirenObjs[k], &pObjects[k]);
 		}
 
-#if 0
-		if (doDrawing) {
-			// Draw overlays :
-			//draw(m_frameOrg, m_Youtput , 1.0 / m_params.scale);
-			if (m_params.showMotion)
-				draw(m_frameOrg, m_BGSEGoutput, 1.0 / m_params.scale);
-
-			draw(m_frameOrg, sirenObjs, 1.0 / m_params.scale);
-			drawInfo(m_frameOrg);
-		}
-#endif 
 		m_frameNum++;
 
 
@@ -510,7 +534,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		int objects_tracked = processFrame(m_frame);
 
-		if (m_decipher.getObjects(m_frameNum).size() > 0) {
+		if (m_decipher.getObjects().size() > 0) {
 			sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale);
 
 
@@ -531,9 +555,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 		}
 #endif 
 		m_frameNum++;
-
-		if (sirenObjs.size() > 1)
-			int debug = 10;
 
 		return sirenObjs.size();
 	}
@@ -589,10 +610,16 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 	}
 
 
+
+	bool CDetector::timeForTracking()
+	{ 
+		return (m_params.trackerType >= 0); 
+	}
+
 	// Get motion (bgseg) interval 
 	bool CDetector::timeForMotion()
 	{
-		return (m_params.motionType > 0 && m_frameNum % m_params.skipMotionFrames == 0);
+		return (m_params.motionType > 0 && m_cycleNum % m_params.skipMotionFrames == 0);
 	}
 
 	/*-------------------------------------------------------------------------
@@ -607,177 +634,25 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 		if (m_params.MLType <= 0)
 			return false;
 
-		// Motion had been detected: 
+		// Intraval cycle arrived:
+		if (m_cycleNum  % m_params.skipDetectionFrames == 0)
+			return true;
+
+		// otherwise 
+		return   false;
+
+#if 0
 		if (m_BGSEGoutput.size() > 0) {
+			// Motion had been detected: 
 			if (m_frameNum % m_params.skipDetectionFramesInMotion == 0)
 				return true;
-		}
-		// Intraval cycle arrived:
-		else if (m_frameNum % m_params.skipDetectionFrames == 0)
-			return true;
-#if 0
+	}
+
 		// Person had been detected in prev frame:
 		if (m_decipher.numberOfPersonsOnBoard() > 0)
 			if (m_frameNum % m_params.skipDetectionFrames == 0)
 				return true;
 #endif 
-
-		// otherwise 
-		return   false;
-
 	}
 
-
-#if 0
-	/*---------------------------------------------------------------------------------------------
-	 *			DRAW FUNCTIONS 
-	 ---------------------------------------------------------------------------------------------*/
-	void CDetector::draw(cv::Mat& img, std::vector <CObject> detections, float scale)
-	{
-		cv::Scalar  color(0, 0, 0);
-
-		for (auto obj : detections) {
-			auto box = scaleBBox(obj.m_bbox, scale);
-			box += cv::Point(m_camROI.x, m_camROI.y);
-			auto classId = obj.m_finalLabel;
-			//--------------------------------------------------------------
-			// Colors: 
-			//        RED for person, 
-			//        BLUE for moving YOLO object (other than Person), 
-			//		  White for motion tracking 
-			//--------------------------------------------------------------
-			//if (obj.m_finalLabel == Labels::person)
-			color = cv::Scalar(0, 0, 255); // colors[classId % colors.size()];
-
-			cv::rectangle(img, box, color, 3);
-			// Add lablel
-			if (obj.m_finalLabel != Labels::nonLabled) {
-				cv::rectangle(img, cv::Point(box.x, box.y - 20), cv::Point(box.x + box.width, box.y), color, cv::FILLED);
-				cv::putText(img, m_yolo.getClassStr(classId).c_str(), cv::Point(box.x, box.y - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
-			}
-		}
-
-	}
-	void CDetector::draw_old(cv::Mat &img, float scale)
-	{
-		cv::Scalar  color(0, 0, 0);
-
-		for (auto obj : m_decipher.getPersonObjects(m_frameNum)) {
-			auto box = scaleBBox(obj.m_bbox, scale);
-			box += cv::Point(m_camROI.x, m_camROI.y);
-			auto classId = obj.m_finalLabel;
-			//--------------------------------------------------------------
-			// Colors: 
-			//        RED for person, 
-			//        BLUE for moving YOLO object (other than Person), 
-			//		  White for motion tracking 
-			//--------------------------------------------------------------
-			// Person objects
-			if (obj.m_finalLabel == Labels::person)
-				color = cv::Scalar(0, 0, 255); // colors[classId % colors.size()];
-			// BGSeg stable objects
-			else if (obj.m_finalLabel == Labels::nonLabled) // motion
-				color = cv::Scalar(200, 200, 200);
-			else
-				continue;
-
-			cv::rectangle(img, box, color, 3);
-			// Add lablel
-			if (obj.m_finalLabel != Labels::nonLabled) {
-				cv::rectangle(img, cv::Point(box.x, box.y - 20), cv::Point(box.x + box.width, box.y), color, cv::FILLED);
-				cv::putText(img, m_yolo.getClassStr(classId).c_str(), cv::Point(box.x, box.y - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
-			}
-		}
-
-
-		// Draw other Labeled objects (only moving objects)
-		if (m_params.showTruck > 0) {
-			bool showOnlyWhileMoving = m_params.showTruck == 1;
-			for (auto obj : m_decipher.getVehicleObjects(m_frameNum, showOnlyWhileMoving)) {
-				auto box = scaleBBox(obj.m_bbox, scale);
-				box += cv::Point(m_camROI.x, m_camROI.y);
-				auto classId = obj.m_finalLabel;
-
-				if (classId == Labels::train || classId == Labels::bus) // DDEBUg
-					classId = Labels::truck;
-
-				// Draw vehicles and othe 
-				if (classId == Labels::truck) {
-					color = cv::Scalar(155, 155, 0);
-					cv::Point debug = centerOf(box);
-					cv::putText(img, "T", centerOf(box), cv::FONT_HERSHEY_SIMPLEX, 2.5, color, 10);
-
-				}
-				else {
-					color = cv::Scalar(255, 0, 0);
-					cv::rectangle(img, box, color, 3);
-					// Add lablel
-					cv::rectangle(img, cv::Point(box.x, box.y - 20), cv::Point(box.x + box.width, box.y), color, cv::FILLED);
-					cv::putText(img, m_yolo.getClassStr(classId).c_str(), cv::Point(box.x, box.y - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
-				}
-			}
-		}
-	}
-
-	void CDetector::draw(cv::Mat &img, std::vector<YDetection> Youtput, float scale)
-	{
-		for (int i = 0; i < Youtput.size(); ++i) {
-			auto detection = Youtput[i];
-			if (detection.class_id == Labels::person || detection.class_id == Labels::car || 
-				detection.class_id == Labels::truck || detection.class_id == Labels::bus)
-			{
-				auto box = scaleBBox(detection.box, scale);
-				box += cv::Point(m_camROI.x, m_camROI.y);
-				auto classId = detection.class_id;
-				const auto color = colors[classId % colors.size()];
-				cv::rectangle(img, box, color, 3);
-
-				cv::rectangle(img, cv::Point(box.x, box.y - 20), cv::Point(box.x + box.width, box.y), color, cv::FILLED);
-				cv::putText(img, m_yolo.getClassStr(classId).c_str(), cv::Point(box.x, box.y - 5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
-			}
-		}
-	}
-
-	// Draw ROI
-	void CDetector::draw(cv::Mat &img, std::vector<cv::Rect>  rois, float scale)
-	{
-		cv::Scalar color(0, 255, 0);
-
-		for (auto roi : rois) {
-			cv::Rect fixROI = scaleBBox(roi, scale) + cv::Point(m_camROI.x, m_camROI.y);
-			cv::rectangle(img, fixROI, color, 2);
-		}
-
-	}
-
-	// Draw ROI polygon 
-	void CDetector::drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale)
-	{
-		if (contour.empty())
-			return;
-
-		cv::Scalar color(0, 255, 0);
-		//if (cv::iscorrect(contour)) {
-		drawContours(img, std::vector<std::vector<cv::Point> >(1, contour), -1, color, 1, 8);
-
-	}
-
-
-	void CDetector::drawInfo(cv::Mat &img)
-	{
-		cv::Scalar color(255, 0, 0);
-		// Draw ROI
-		cv::rectangle(img, m_camROI, color, 2);
-
-		// Draw alert-polygon 
-		if (!m_camerasInfo.empty())
-			drawPolygon(img, m_camerasInfo[0].m_polyPoints, 1.); // DDEBUG draw camera[0]
-
-
-		if (0)
-			cv::putText(m_frameOrg, std::to_string(m_frameNum) , cv::Point(20, img.rows - 20), cv::FONT_HERSHEY_SIMPLEX, 1., cv::Scalar(0, 255, 0));
-
-
-	}
-#endif 
 

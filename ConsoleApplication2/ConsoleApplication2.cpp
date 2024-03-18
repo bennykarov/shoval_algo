@@ -35,6 +35,7 @@
 #include "../BauotechAIConnectorDll/config.hpp"
 #include "../BauotechAIConnectorDll/timer.hpp"
 #include "../BauotechAIConnectorDll/yolo/yolo.hpp"
+#include "draw.hpp"
 
 //std::string cameraFname = R"(C:\Program Files\Bauotech\AI\cameras100.json)";
 std::string cameraFname = FILES::CAMERAS_FILE_NAME; //  R"(C:\Program Files\Bauotech\AI\cameras10.json)";
@@ -48,7 +49,7 @@ int videosNum = 1; //11; // DDEBUG
 int videoTodisplayInd = 0;
 
 
-std::vector <cv::Scalar> g_colors = { cv::Scalar(255,0,0), cv::Scalar(0,255,0), cv::Scalar(0,0,255), cv::Scalar(255,255,0), cv::Scalar(255,0,255), cv::Scalar(0,255,255) , cv::Scalar(155,55,0), cv::Scalar(25,0,55), cv::Scalar(110,155,255) };
+//std::vector <cv::Scalar> g_colors = { cv::Scalar(255,0,0), cv::Scalar(0,255,0), cv::Scalar(0,0,255), cv::Scalar(255,255,0), cv::Scalar(255,0,255), cv::Scalar(0,255,255) , cv::Scalar(155,55,0), cv::Scalar(25,0,55), cv::Scalar(110,155,255) };
 /*------------------------------------------------------------------------------------------------------
  *									U T I L S     function 
  ------------------------------------------------------------------------------------------------------*/
@@ -136,98 +137,19 @@ int readCamerasJson(std::string fname, std::vector <CAlert_>& cameras, int camer
 
 	return cameras.size();
 }
-void drawInfo(cv::Mat& img, CAlert_ camInfo)
-{
-	cv::Scalar color(255, 0, 0);
-	// Draw ROI
-
-	// Draw alert-polygon 
-	drawPolygon(img, camInfo.m_polyPoints, 1.); // DDEBUG draw camera[0]
-
-}
-
-void drawInfo(cv::Mat& img, std::vector <CAlert_> camsInfo)
-{
-	cv::Scalar color(255, 0, 0);
-	// Draw ROI
-
-	// Draw alert-polygon
-	for (auto camInfo : camsInfo)
-		drawPolygon(img, camInfo.m_polyPoints, 1.); // DDEBUG draw camera[0]
-
-}
-
-
-
-
-/* return cv::waitKey() */
-int draw(int height, int width, char *pData, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, int framenum)
-{
-	static int wait = -1;
-	int key;
-
-	cv::Mat frameAfter = cv::Mat(height, width, CV_8UC3, pData);
-
-	// -1- Draw ROI 	
-	if (!g_cameraInfos.empty()) {
-		int camID = videoTodisplayInd;
-		auto displayCamInfo = std::find_if(g_cameraInfos.begin(), g_cameraInfos.end(),
-			[&camID](const CAlert_& alert) { return alert.m_camID == videoTodisplayInd; });
-		
-		drawInfo(frameAfter, *displayCamInfo); // DDEBUG draw camera[0]
-		//drawInfo(frameAfter, g_cameraInfos[videoTodisplayInd]); // DDEBUG draw camera[0]
-	}
-
-	bool DrawColorPerID = false; // DDEBUG flag
-
-	if (DrawColorPerID)
-		for (auto obj : AIObjects) {
-			int colorInd = obj.ID % g_colors.size();
-			cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[colorInd], 2);
-			cv::putText(frameAfter, std::to_string(obj.ID), cv::Point(obj.X, obj.Y-5), cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(255, 0, 255));
-		}
-	else 
-		for (auto obj : AIObjects) {
-			int colorInd = obj.ObjectType % g_colors.size();
-			cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[colorInd], 2);
-		}
-
-
-	////------------------
-	cv::Mat display;
-	float scale = 0.7;
-	cv::resize(frameAfter, display, cv::Size(0, 0), scale, scale);
-	cv::putText(display, std::to_string(framenum), cv::Point(display.cols - 170, display.rows - 50), cv::FONT_HERSHEY_DUPLEX, 2.0, cv::Scalar(0, 0, 255));
-
-	if (!AIObjects.empty()) {
-		cv::putText(display, "D", cv::Point(20, display.rows - 50), cv::FONT_HERSHEY_DUPLEX, 2.0, cv::Scalar(0, 0, 255));
-		//std::cout << "Frame " << frameNum << " : " << AIObjects[0].x << " , " << AIObjects[0].y << "\n";
-
-	}
-
-	cv::imshow("processed-image", display);
-	key = cv::waitKey(wait);
-	if (key == 'p')
-		wait = -1;
-	else
-		wait = 1;
-
-	return key;
-} 
-
-
-
 
 
 /// ////////////////////////////////////////
 
 int addPolygonsFromCameraJson(cv::Mat frame)
 {
-	readCamerasJson(cameraFname, g_cameraInfos, -1); // read all cam's
+	int camID = 0;
+	readCamerasJson(cameraFname, g_cameraInfos, camID); // read all cam's
 
-	for (auto camInf : g_cameraInfos)
-		if (camInf.m_polyPoints.empty())
-			camInf.m_polyPoints = { cv::Point(0,0), cv::Point(frame.cols,0), cv::Point(frame.cols,frame.rows), cv::Point(0,frame.rows) };
+	for (auto& camInf : g_cameraInfos) {
+		if (camInf.m_polyPoints.empty() || !camInf.checkPolygon(frame.cols, frame.rows))
+			camInf.m_polyPoints = { cv::Point(0,0), cv::Point(frame.cols - 1,0), cv::Point(frame.cols - 1,frame.rows - 1), cv::Point(0,frame.rows - 1) };
+	}
 
 
 	int polygonId = 0;
@@ -249,12 +171,6 @@ int addPolygonsFromCameraJson(cv::Mat frame)
 			camInf.m_polyPoints.size() * 2); // polygonSize);
 	}
 
-
-
-	for (auto& camInf : g_cameraInfos) {
-		if (camInf.m_polyPoints.empty() || !camInf.checkPolygon(frame.cols, frame.rows))
-			camInf.m_polyPoints = { cv::Point(0,0), cv::Point(frame.cols - 1,0), cv::Point(frame.cols - 1,frame.rows - 1), cv::Point(0,frame.rows - 1) };
-	}
 
 	return g_cameraInfos.size();
 }
@@ -321,12 +237,12 @@ int main_SHOVAL(int argc, char* argv[])
 	uint32_t height = 0;
 	uint32_t pixelWidth = 0; // in Bytes
 	uint32_t image_size = 0;
-	uint8_t youDraw = 0;
+	uint8_t youDraw = 0; // DDEBUG DRAW 
 
 	// Params per camera:
 	uint8_t* pData[MAX_CAMERAS];
-	ALGO_DETECTION_OBJECT_DATA Objects[MAX_CAMERAS][10];
-	ALGO_DETECTION_OBJECT_DATA* pObjects[MAX_CAMERAS];
+	ALGO_DETECTION_OBJECT_DATA Objects[MAX_CAMERAS][MAX_OBJECTS];
+	ALGO_DETECTION_OBJECT_DATA* pObjects[MAX_OBJECTS];
 	uint32_t objectCount[MAX_CAMERAS];
 	uint32_t* pObjectCount[MAX_CAMERAS];
 	uint32_t alertCount[MAX_CAMERAS];
@@ -386,7 +302,7 @@ int main_SHOVAL(int argc, char* argv[])
 	//------------------------------------------------------
 	int skipEveryframes = 0;
 	while (!frame.empty()) {
-
+		Sleep(15); // DDEBUG DDEBUG simulate RT camera 
 		/*
 		if (skipEveryframes > 0 && frameNum % (skipEveryframes + 1) != 0) {
 			cap >> frame;
@@ -409,6 +325,8 @@ int main_SHOVAL(int argc, char* argv[])
 				objectsDetected[_videoIndex] = BauotechAlgoConnector_Run3_sync(_videoIndex, pData[_videoIndex], AIObjects[_videoIndex], frameNum); // tsQueue runner
 		}
 
+		if (frameNum == 17)
+			int debug = 10;
 		// Read results 
 		if (ASYNC) {
 			for (int _videoIndex = 0; _videoIndex < videosNum; _videoIndex++) {
@@ -440,13 +358,17 @@ int main_SHOVAL(int argc, char* argv[])
 		// Convert list to vector
 
 		AIObjectVec.clear();
-		for (int i = 0; i < objectsDetected[videoTodisplayInd]; i++)
+
+		for (int i = 0; i < objectsDetected[videoTodisplayInd]; i++) {
 			AIObjectVec.push_back(AIObjects[videoTodisplayInd][i]);
+			if (AIObjectVec.back().ObjectType != 2)
+				int debug = 10;
+		}
 
 		if (DrawDetections == 2)
-			key = draw(height, width, (char*)pData[videoTodisplayInd], AIObjectVec, frameNum);
+			key = draw(height, width, (char*)pData[videoTodisplayInd], AIObjectVec, g_cameraInfos, frameNum);
 		else if (DrawDetections == 1)
-			key = draw(height, width, (char*)pData[videoTodisplayInd], std::vector <ALGO_DETECTION_OBJECT_DATA>(), frameNum);
+			key = draw(height, width, (char*)pData[videoTodisplayInd], std::vector <ALGO_DETECTION_OBJECT_DATA>(), g_cameraInfos, frameNum);
 
 
 		//------------------
@@ -484,7 +406,6 @@ int main_SHOVAL(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
-
 
 	return main_SHOVAL(argc, argv);
 	//return main_camFileGen(argc, argv);

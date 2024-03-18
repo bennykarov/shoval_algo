@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 
-#define MAX_VIDEOS     10
+#define MAX_VIDEOS     20
 
 #pragma pack(push, 1) 
 typedef struct ALGO_DETECTION_OBJECT_DATA
@@ -86,7 +86,7 @@ extern "C" {
 
 
 
-	API_EXPORT int BauotechAlgoConnector_PolygonInit(uint32_t videoIndex, int numberOfPolygons);
+	API_EXPORT int BauotechAlgoConnector_PolygonClear(uint32_t videoIndex);
 	
 
 

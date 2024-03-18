@@ -21,7 +21,7 @@ public:
 	bool init(int video_index, int width, int height, int image_size, int pixelWidth);
 	void setRousceSemaphore(CSemaphore *sema) {m_resourceSemaphore = sema;}
 	void addPolygon(int CamID, int polygonId, char* DetectionType, int MaxAllowed, int Polygon[], int polygonSize);
-	void polygonInit(int numberOfPolygons);
+	void polygonClear();
 	void initPolygons();
 
 	bool terminate();

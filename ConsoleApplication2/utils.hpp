@@ -38,65 +38,10 @@ inline  void assertion_error(const char* expr, const char* file, int line, const
 
 
 
-class CAlert_ { // duplicate structure of CAlert (alert.hpp)
-
-public:
-    int m_camID;
-    std::vector<cv::Point > m_polyPoints;
-    //std::tuple <int,int> label_allowed;
-    int m_label = -1;
-    int m_maxAllowed = -1;
-    cv::Rect  m_bbox;
-public:
-	CAlert_() {}
-	CAlert_(std::vector<cv::Point > polyPoints ,int label ,int maxAllowed)
-	{
-		m_polyPoints = polyPoints;
-		m_label = label;
-		m_maxAllowed = maxAllowed;
-	}
-
-	bool checkPolygon(int width, int height)
-	{
-		for (auto& point : m_polyPoints) {
-			if (point.x >= width)
-				return false;
-				//point.x = width - 1;
-			if (point.y >= height)
-				return false;
-				//point.y = height - 1;
-		}
-
-		/*
-		auto it = std::max_element(
-			m_polyPoints.begin(),
-			m_polyPoints.end(),
-			[](auto first, auto second) {
-				return first.x < second.x;
-			});
-		int maxX = std::max_element(
-			m_polyPoints.begin(),
-			m_polyPoints.end(),
-			[](auto first, auto second) {
-				return first.x < second.x;
-			})->x;
-		int maxY = std::max_element(
-			m_polyPoints.begin(),
-			m_polyPoints.end(),
-			[](auto first, auto second) {
-				return first.y < second.y;
-			})->y;
-
-		if (maxX >= width )
-		return false;
-		*/
-		return true;
-	}
-};
 
 
 //int readCamerasJson(std::string fname, int camID, std::vector <CAlert_>& cameras);
-void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale);
+//void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale);
 
 std::string toUpper(std::string str);
 

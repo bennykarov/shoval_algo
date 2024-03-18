@@ -12,6 +12,7 @@
 //tracking_legacy.hpp
 #include <opencv2/core/ocl.hpp>
 
+#include "config.hpp"
 #include "utils.hpp"
 #include "config.hpp"
 #include "trackerBasic.hpp"
@@ -23,13 +24,160 @@ using namespace std;
 // Convert to string
 #define SSTR( x ) static_cast< std::ostringstream & >( ( std::ostringstream() << std::dec << x ) ).str()
 
+//========================================================================
+// M U L T I       T R A C K E R    C L A S S 
+//========================================================================
 
+bool CMTracker::init()
+{
+    /*
+    if (m_trackerType < 0) {
+        std::cout << "Missing first Tracker init, use default : " << m_trackerTypes_str[m_trackerType];
+    }
+
+    if (!m_tracker.empty())
+        m_tracker.release();
+
+    m_tracker = createTrackerByName(m_trackerTypes_str[m_trackerType]);
+    */
+    return true;
+}
+
+bool CMTracker::init(int type, int debugLevel, int badFramesToReset)
+{
+
+    m_trackerType = type;
+    m_badFramesToReset = badFramesToReset;
+    m_debugLevel = debugLevel;
+
+
+    if (type >= m_trackerTypes_str.size()) {
+        std::cout << "Max tracker index = " << m_trackerTypes_str.size() << "\n";
+        return false;
+    }
+
+    std::cout << "Tracker type = " << m_trackerTypes_str[m_trackerType] << "\n";
+
+    //m_tracker = createTrackerByName(m_trackerTypes_str[m_trackerType]);
+    //cv::Ptr<cv::legacy::Tracker> m_trackerLegacy = createTrackerByName_legacy(const std::string& name)
+    return true;
+
+}
+
+void CMTracker::clear()
+{ 
+    for (auto trk : m_algorithms)
+        trk->~Tracker();
+
+    m_algorithms.clear();
+    m_bboxs.clear();
+    m_objID.clear();
+    m_labels.clear();
+
+    if (1) 
+        m_multiTracker.clear();
+
+
+
+}
+
+void CMTracker::clear(int ind)
+{
+
+    m_algorithms[ind]->~Tracker();
+
+    m_algorithms.erase(m_algorithms.begin() + ind);
+    m_bboxs.erase(m_bboxs.begin() + ind);
+    m_objID.erase(m_objID.begin() + ind);
+
+}
+
+
+
+void CMTracker::clear(std::vector <int> indices)
+{
+
+    std::sort(indices.begin(), indices.end(), greater<int>());
+
+    for (auto ind : indices) {
+        m_algorithms[ind]->~Tracker();
+        m_algorithms.erase(m_algorithms.begin() + ind);
+        m_bboxs.erase(m_bboxs.begin() + ind);
+        m_objID.erase(m_objID.begin() + ind);
+    }
+}
+
+void CMTracker::setROIs(std::vector <cv::Rect> bboxes, std::vector <int> objID, std::vector <int> labels, cv::Mat frame, bool clearHistory)
+{
+    if (m_trackerType < 0)
+        return;
+
+    for (int i = 0; i < MIN(bboxes.size(), MAX_TRACKERS_ALLOWED); i++) {
+        m_bboxs.push_back(bboxes[i]);
+        m_algorithms.push_back(createTrackerByName_legacy(m_trackerTypes_str[m_trackerType]));
+        m_objID.push_back(objID[i]);
+        m_labels.push_back(labels[i]);
+
+        m_multiTracker.add(m_algorithms.back(), frame, Rect2d(bboxes[i]));
+    }
+}
+
+
+int CMTracker::track(cv::Mat frame, std::vector<cv::Rect>& trackerOutput)
+{
+    //for (auto trk : m_algorithms)
+    for (int i = 0; i < m_algorithms.size(); i++) {
+        bool ok = m_algorithms[i]->update(frame, m_bboxs[i]);
+        if (ok) {
+            UTILS::checkBounderies(m_bboxs[i], frame.size());
+            trackerOutput.push_back(m_bboxs[i]);
+        }
+    }
+
+    return trackerOutput.size();
+}
+
+int CMTracker::track(cv::Mat frame, std::vector<CObject>& trackerOutput, int frameNum)
+{
+    //for (auto trk : m_algorithms)
+    for (int i = 0; i < m_algorithms.size(); i++) {
+        bool ok = m_algorithms[i]->update(frame, m_bboxs[i]);
+        if (ok) {
+            UTILS::checkBounderies(m_bboxs[i], frame.size());
+            int label = m_labels[i]; // DDEBUG 
+            CObject trackObj(m_bboxs[i], frameNum, 0, DETECT_TYPE::Tracking, m_labels[i]);  // 	DDEBUG giraffe 
+
+            trackerOutput.push_back(trackObj);
+        }
+    }
+
+    return trackerOutput.size();
+}
+
+
+int CMTracker::track_(cv::Mat frame, std::vector<cv::Rect>& trackerOutput)
+{
+    m_multiTracker.update(frame);
+    for (auto& roi_ : m_multiTracker.getObjects()) {
+        cv::Rect roi = cv::Rect(roi_);
+        UTILS::checkBounderies(roi, frame.size());
+
+        trackerOutput.push_back(roi);
+    }
+
+    return trackerOutput.size();
+}
+
+//========================================================================
+//  S I N G L E     T R A C K E R    C L A S S 
+//========================================================================
 bool CTracker::init(int type, int debugLevel, int badFramesToReset)
 {
 
 	m_trackerType = type;
 	m_badFramesToReset = badFramesToReset;
 	m_debugLevel = debugLevel;
+
 
 	if (type >= m_trackerTypes_str.size()) {
 		std::cout << "Max tracker index = " << m_trackerTypes_str.size() << "\n";
@@ -40,6 +188,8 @@ bool CTracker::init(int type, int debugLevel, int badFramesToReset)
 
 	m_tracker =  createTrackerByName(m_trackerTypes_str[m_trackerType]);
 	//cv::Ptr<cv::legacy::Tracker> m_trackerLegacy = createTrackerByName_legacy(const std::string& name)
+
+    return true;
 
  }
 
@@ -155,9 +305,9 @@ int CTracker::track_main(std::string videoFName, int trackerTypeInd, int skip)
 
 	Rect bbox;
 
-#if 0
+#if 1
     // Run idle for  selection
-    while(video.read(frame)) {
+    while (video.read(frame)) {
         imshow("Idle", frame);
         int k = waitKey(1);
         if(k == 's')
@@ -166,12 +316,16 @@ int CTracker::track_main(std::string videoFName, int trackerTypeInd, int skip)
             return 0;
     }
 
+    video.read(frame);
     
     // Uncomment the line below to select a different bounding box
-    bbox = selectROI(frame, false);
+    bbox = selectROI("Select ROI", frame, false);
 
     // Display bounding box.
     rectangle(frame, bbox, Scalar( 255, 0, 0 ), 2, 1 );
+    Sleep(1000);
+    cv::destroyAllWindows();
+
     imshow("Tracking", frame);
 
     tracker->init(frame, bbox);
@@ -209,13 +363,16 @@ int CTracker::track_main(std::string videoFName, int trackerTypeInd, int skip)
         // Exit if ESC pressed.
         int k = waitKey(1);
 		if (k == 's') {
-			bool firstTime = bbox.empty();
+			//bool firstTime = bbox.empty();
 			bbox = selectROI("selector", frame, false);
-			if (firstTime)
-				tracker->init(frame, bbox);
-		}
-        else if(k == 27)
-            break;
+			//if (firstTime)
+			tracker.release();
+			tracker = createTrackerByName(m_trackerTypes_str[m_trackerType]);
+			tracker->init(frame, bbox);
+
+            cv::destroyAllWindows();
+        }
+        //else if(k == 27)    break;
 
     }
     
@@ -233,8 +390,7 @@ int CTracker::track_main(std::string videoFName, int trackerTypeInd, int skip)
 bool CTracker::init()
 {
 	if (m_trackerType < 0) {
-		std::cout << "Missing first Tracker init \n";
-		return false;
+		std::cout << "Missing first Tracker init, use default : " << m_trackerTypes_str[m_trackerType];
 	}
 
 	if (!m_tracker.empty())

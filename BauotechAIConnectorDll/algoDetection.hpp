@@ -15,8 +15,7 @@
 #include "yolo/types.hpp"
 #include "CObject.hpp"
 #include "yolo/yolo.hpp"
-//#include "yolo/yolo5.hpp"
-//#include "yolo/yoloV8.hpp"
+#include "trackerBasic.hpp"
 #include "concluder.hpp"
 
 
@@ -67,12 +66,14 @@ private:
 
 	bool timeForMotion();
 	bool timeForDetection();
+	bool timeForTracking();
 
 private:
 	int m_width = 0;
 	int m_height = 0;
 	void *m_data = NULL;
 	int m_frameNum = 0;
+	int m_cycleNum = 0; // count actual processed frame#
 	//float m_calcScale = 0.5;
 	float m_scaleDisplay = 1.;// 0.7;
 	bool  m_motionDetectet = false;
@@ -87,7 +88,7 @@ private:
 
 	//CYolo5 m_yolo; // DDEBUG 
 	CYolo8 m_yolo;
-	//CTracker       m_tracker;
+	CMTracker       m_tracker;
 	CDecipher m_decipher;
 	std::vector <CAlert> m_camerasInfo;
 	int m_cameraIndex = 0;
@@ -95,6 +96,7 @@ private:
 
 private:
 	std::vector<YDetection> m_Youtput;
+	std::vector<cv::Rect>	m_TrackerOutput;
 	std::vector <cv::Rect>  m_BGSEGoutput; // humna candidates
 	std::vector <cv::Rect>  m_BGSEGoutputLarge; // Larger objects (not a human)
 

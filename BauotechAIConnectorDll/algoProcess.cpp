@@ -6,12 +6,17 @@
 
 
 #include "files.hpp"
-#include "utils.hpp"
 #include "logger.hpp"
 #include "AlgoApi.h"
 #include "config.hpp"
 #include "AlgoDetection.hpp"
 #include "loadBalancer.hpp"
+
+#include "trackerBasic.hpp" // DDEBUG test
+
+// Includes for DEBUG DISPLAY 
+//#include "../ConsoleApplication2/utils.hpp"
+#include "../ConsoleApplication2/draw.hpp"
 
 #include "algoProcess.hpp"
 
@@ -83,6 +88,14 @@ CAlgoProcess::~CAlgoProcess()
 		bool ok = m_tracker.init(video_index, m_width, m_height, image_size, m_pixelWidth, m_scale/*0.5*/);
 
 		m_timer.start();
+
+
+#if 0
+	// TRACKER TEST 		
+	CTracker _tracker;
+	_tracker.track_main(R"(C:\Data\office\doubles.ts)", 0);
+#endif 
+
 		return ok;
 	}
 
@@ -125,9 +138,9 @@ CAlgoProcess::~CAlgoProcess()
 			m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, polygonId));
 	}
 
-	void CAlgoProcess::polygonInit(int numberOfPolygons)
+	void CAlgoProcess::polygonClear()
 	{
-		
+		m_camerasInfo.clear();
 	}
 
 	void CAlgoProcess::initPolygons()
@@ -270,6 +283,7 @@ CAlgoProcess::~CAlgoProcess()
 		float elapsedMin = 999999;
 		float elapsedMax = 0;
 
+
 		while (m_terminate == false)
 		{
 			if (bufQ->front(frameBuff) == false)
@@ -331,6 +345,15 @@ CAlgoProcess::~CAlgoProcess()
 			for (; i < MAX_OBJECTS; i++)
 				m_Objects[i].frameNum = -1;
 
+
+			// DDEBUG DDEBUG DISPLAY ================================================================================================================
+			if (m_youDraw) { 
+				float displayScale = 0.5;
+				int key = draw(m_height, m_width, frameBuff.ptr, m_pObjectsAPI, std::vector <CAlert_>(), m_frameNum);				
+				cv::imshow("DLL draw", frameBGR);
+				cv::waitKey(1);
+			}
+			//=======================================================================================================================================
 
 			// send the data to the callback
 			if (m_callback != nullptr && m_objectCount > 0)
@@ -410,24 +433,24 @@ CAlgoProcess::~CAlgoProcess()
 	}
 
 	/*---------------------------------------------------------------------------------------------------
-	* API function: getObjectData():
+	* API DEBUG function: getObjectData():
 	* return number of objects provided 
 	* index = -1 means return all valid objects (m_objectCount)
 	 ---------------------------------------------------------------------------------------------------*/
 	int CAlgoProcess::getObjectData(int videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects, int& frameNum)
 	{
-		if (index >= m_objectCount || m_objectCount == 0)
+		if (index >= (int)m_pObjectsAPI.size()|| (int)m_pObjectsAPI.size() == 0)
 			return 0;
 
 		std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);
 
 		if (index < 0) { // return all objects
-			memcpy(pObjects, &m_Objects[0], sizeof(ALGO_DETECTION_OBJECT_DATA) * m_objectCount);
+			memcpy(pObjects, &m_pObjectsAPI[0], sizeof(ALGO_DETECTION_OBJECT_DATA) * m_pObjectsAPI.size());
 			frameNum = m_Objects[0].frameNum;
 			return m_objectCount;
 		}
 		else {
-			memcpy(pObjects, &m_Objects[index], sizeof(ALGO_DETECTION_OBJECT_DATA));
+			memcpy(pObjects, &m_pObjectsAPI[index], sizeof(ALGO_DETECTION_OBJECT_DATA));
 			frameNum = m_Objects[0].frameNum;
 			return 1;
 		}

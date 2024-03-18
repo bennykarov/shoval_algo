@@ -37,7 +37,8 @@ enum Labels
 	bench,
 	bird,
 	cat,
-	dog
+	dog,
+	unknown = 9999
 };
 
 
@@ -45,7 +46,7 @@ enum DETECT_TYPE {
 	DETECT_NA = 0,
 	BGSeg,
 	ML,
-	Tracker,
+	Tracking,
 	Hidden,   // prediction on blind 
 	Prediction 
 	};
@@ -54,7 +55,7 @@ enum DETECT_TYPE {
 class CObject {
 public:
 	CObject() :m_bbox(0,0,0,0) { }
-	CObject(cv::Rect  r, int frameNum, unsigned int id, DETECT_TYPE  detectionType, Labels label)
+	CObject(cv::Rect  r, int frameNum, unsigned int id, DETECT_TYPE  detectionType, int label)
 	{
 		m_label = label;
 		m_detectionType = detectionType;
@@ -80,8 +81,8 @@ public:
 
 public:
 	unsigned int	m_ID = 0;  //unique id
-	Labels			m_label = Labels::nonLabled; // current detection label
-	Labels			m_finalLabel = Labels::nonLabled;  // Conclusion of all detection labels
+	int				m_label = Labels::nonLabled; // current detection label
+	int				m_finalLabel = Labels::nonLabled;  // Conclusion of all detection labels
 	cv::Rect		m_bbox; // DDEBUG for debug
 	DETECT_TYPE		m_detectionType;
 	int				m_frameNum;
