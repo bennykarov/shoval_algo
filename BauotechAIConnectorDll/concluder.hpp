@@ -13,7 +13,7 @@ namespace CONCLUDER_CONSTANTS
 	const int GOOD_TRACKING_LEN = 20;
 	const int INHERIT_LABEL_LEN  = 30 * 1; //  1 sec
 	const int SAVE_HIDDEN_FRAMES = 2 * 30; // 4;
-	const int MAX_SIREN_HIDDEN_FRAMES = 1;
+	const int MAX_SIREN_HIDDEN_FRAMES = 3;
 	const int MAX_YOLO_HIDDEN_FRAMES = 30;
 
 }
@@ -26,14 +26,18 @@ public:
 	void setPersonDim(cv::Size dim) { m_maxPresonDim = dim; } // max person size in pixels
 	void setObjectDim(cv::Size dim) { m_maxObjectDim = dim; } // max person size in pixels
 	void add_(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum);
-	std::vector <int>    add(std::vector <cv::Rect>  &trackerOutput, std::vector <YDetection> YoloOutput, int frameNum);
+	//std::vector <int>    add(std::vector <cv::Rect>& trackerOutput, std::vector <YDetection> YoloOutput, int frameNum);
+	std::vector <int>    add(std::vector <CObject>& trackerOutput, std::vector <YDetection> YoloOutput, int frameNum);
 	void add(std::vector <YDetection> YoloOutput,int frameNum);
-	std::vector <int>  findDuplicated(std::vector <cv::Rect> trackerBoxes, std::vector <cv::Rect> yoloBoxes);
-	std::vector <int> removeDuplicated(std::vector <cv::Rect>& trackerOutput, std::vector <YDetection> YoloOutput);
-	int track();
-	int track2(int mode);
-	std::vector <CObject> getObjects(int frameNum = -1); //  { return m_goodObjects; }
-	std::vector <CObject> getObjects(Labels label); //  { return m_goodObjects; }
+	//static std::vector <std::tuple<int, int>>  findDuplicated2(std::vector <cv::Rect> trackerBoxes, std::vector <cv::Rect> yoloBoxes);
+	int track_old();
+	int track(int mode);
+	std::vector <CObject> getObjects(int frameNum = -1); 
+	std::vector <CObject> getObjects(Labels label); 
+	std::vector <CObject> getNewObjects(int frameNum = -1); 
+	std::vector <CObject> getBadROITrackerObject(int frmaeNum);
+
+
 	std::vector <CObject> getPersonObjects(int frameNum); //  { return m_goodObjects; }
 	std::vector <CObject> getVehicleObjects(int frameNum, bool only_moving); //  Other labeled objects (not a persons) & BGSeg 
 	std::vector <CObject> getOtherObjects(int frameNum, bool only_moving); //  Other labeled objects (not a persons) & BGSeg 
@@ -56,7 +60,11 @@ public:
 	std::vector <CObject> getSirenObjects(float scale = 1.);
 	std::vector <CObject> getNewSirenObjects(float scale = 1.);
 
+	std::vector <int> getIDStoPrune() { return m_prunedIDs;  }
+
 private:
+	std::vector <int>  findDuplicated(std::vector <cv::Rect> trackerBoxes, std::vector <cv::Rect> yoloBoxes);
+	std::vector <int> removeDuplicated(std::vector <cv::Rect>& trackerOutput, std::vector <YDetection> YoloOutput);
 	bool isMoving(std::vector <CObject> obj);
 	bool isStatic(std::vector <CObject> obj);
 	bool isLarge(std::vector <CObject> obj);
@@ -74,6 +82,7 @@ private:
 	CObject   consolidateObj(std::vector <CObject> &objectList);
 	int    calcFinalLable(std::vector <CObject> obj);
 	int		  pruneObjects(int hiddenLen);
+	std::vector <Labels>   getActiveLabels();
 
 private:
 
@@ -93,6 +102,7 @@ private:
 	cv::Size m_dim;
 	int m_frameNum;
 	int m_debugLevel = 0;
+	std::vector <int> m_prunedIDs; // keep id to prune for Tracker 
 };
 
 #endif 
