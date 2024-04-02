@@ -15,7 +15,8 @@
 #include "yolo/types.hpp"
 #include "CObject.hpp"
 #include "yolo/yolo.hpp"
-#include "trackerBasic.hpp"
+//#include "trackerBasic.hpp"
+#include "dasiamrpn_tracker.hpp"
 #include "concluder.hpp"
 
 
@@ -88,15 +89,17 @@ private:
 
 	//CYolo5 m_yolo; // DDEBUG 
 	CYolo8 m_yolo;
-	CMTracker       m_tracker;
+	//CMTracker       m_tracker;
+	CSiamTracker      m_tracker;
 	CDecipher m_decipher;
 	std::vector <CAlert> m_camerasInfo;
 	int m_cameraIndex = 0;
 	std::vector <Labels> m_detectionTypes; // store all types for detections 
 
 private:
-	std::vector<YDetection> m_Youtput;
+	std::vector<YDetection> m_Yolotput;
 	std::vector<cv::Rect>	m_TrackerOutput;
+	std::vector<CObject>	m_TrackerObjects;
 	std::vector <cv::Rect>  m_BGSEGoutput; // humna candidates
 	std::vector <cv::Rect>  m_BGSEGoutputLarge; // Larger objects (not a human)
 

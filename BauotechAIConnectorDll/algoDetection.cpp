@@ -153,6 +153,7 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 	conf.MlearningRate = pt.get<float>("ALGO.MlearningRate", conf.MlearningRate);
 	conf.motionType = pt.get<int>("ALGO.motion", conf.motionType);
 	conf.trackerType = pt.get<int>("ALGO.tracker", conf.trackerType);
+	conf.trackerStep = pt.get<int>("ALGO.trackerStep", conf.trackerStep);
 	conf.MLType = pt.get<int>("ALGO.ML", conf.MLType);
 	conf.useGPU = pt.get<int>("ALGO.useGPU",1) ;
 
@@ -324,20 +325,10 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 			m_bgSeg.init(m_params.MHistory, m_params.MvarThreshold, false, emphasize, m_isCuda);
 			m_bgSeg.setLearnRate(m_params.MlearningRate);
 		}	
-		/*
-		else if (m_params.motionType > 1 && m_params.motionType < 7) {
-			m_tracker.init(0, 1);
-		}
-		else if (m_params.motionType == 3) {
-			m_tracker.init(3, 1);
-		}
-		else if (m_params.motionType == 4) {
-			m_tracker.init(4, 1);
-		}
-		*/
 
 		int debugLevel = 1;
-		m_tracker.init(m_params.trackerType, debugLevel);
+		m_tracker.init(m_params.useGPU, TRACKER::scale, debugLevel); //siam tracker 
+		//m_tracker.init(m_params.trackerType, debugLevel);
 		
 		m_decipher.init(m_params.debugLevel);
 		m_decipher.setPersonDim(MAX_PERSON_DIM); // DDEBUG CONST
@@ -368,6 +359,11 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		cv::Mat frame = frame_;
 
+		cv::Mat trkFrame;
+		trkFrame = m_frame;
+
+
+
 		// BG seg detection
 		//--------------------
 #if 0
@@ -389,56 +385,93 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		// YOLO detection
 		//--------------------
-		m_Youtput.clear();
+		m_Yolotput.clear();
 		if (timeForDetection()) {
 			cv::Mat frameEnhanced; // DDEBUG TEST 
-			m_yolo.detect(frame, m_Youtput);
+			m_yolo.detect(frame, m_Yolotput);
+		}
+
+
+		// Tracking:
+		//-------------------
+
+		if (timeForDetection()) {
+			std::vector <cv::Rect> yoloBoxes;
+			for (auto yObj : m_Yolotput)
+				yoloBoxes.push_back(yObj.box);
+		}
+
+
+		m_TrackerObjects.clear();
+
+		if (timeForTracking()) {
+			m_tracker.track(frame, m_TrackerObjects, m_frameNum);
 		}
 
 		m_TrackerOutput.clear();
-		if (timeForTracking()) {
-			m_tracker.track(frame, m_TrackerOutput);
-		}
+		for (auto obj : m_TrackerObjects)
+			m_TrackerOutput.push_back(obj.m_bbox);
 
+		std::vector <int>   TrkDuplicateInds = m_decipher.add(m_TrackerObjects, m_Yolotput, m_frameNum);
 
-		//std::cout << "YOLO DETECTS : " << m_Youtput.size() << " objects \n";
-
-		//m_decipher.add(m_BGSEGoutput, m_Youtput, m_frameNum); 
-		//m_decipher.add(m_Youtput, m_frameNum); 
-		// add & match , also remove duplicated from 'm_TrackerOutput'
-		std::vector <int>   duplicateInds = m_decipher.add(m_TrackerOutput, m_Youtput, m_frameNum); 
 
 		int mode = timeForDetection() ? 1 : 0;
-		m_decipher.track2(mode);
+		m_decipher.track(mode);
 
 		//----------------------
 		// update tracker ROIs:
 		//----------------------
-		
+		std::vector debugIDs = m_decipher.getIDStoPrune();
+		if (!debugIDs.empty())
+			m_tracker.prune(debugIDs);
+		static bool debugTrackerFirstTime = true;
 		//-------------------------------------------------------------
 		// Set fresh ROIs  to tracker (in case YOLO succeed to detect)
 		//-------------------------------------------------------------
-		if (m_Youtput.size() > 0) {
+		if (m_Yolotput.size() > 0) {
 			//--------------------------------------------------
 			// Set Tracker with fresh YOLO detection boxes,- 
 			// leave the ones was not detected by YOLO
-			//--------------------------------------------------
-			m_tracker.clear(); // remove all ROIs
-			// Remove duplicated ROI trackers 
-			//else if (duplicateInds.size() > 0) 		m_tracker.clear(duplicateInds);
-
+			//--------------------------------------------------\
+			`
 			std::vector <cv::Rect> bboxes;
-			std::vector <int> objIDs , labels;
+			std::vector <int> objIDs , labels;			
+				
+#if 1 
 
-			// Add Tracker with all current detections 
-			for (auto label : m_detectionTypes)
-				for (auto obj : m_decipher.getObjects(label)) {
-					bboxes.push_back(obj.m_bbox);
-					objIDs.push_back(obj.m_ID);
-					labels.push_back(obj.m_label);
+			if (1) 
+			{
+				if (1) // DDEBUG DDEBUG PRINT  
+				{
+					std::vector <CObject> debugBadObjects = m_decipher.getBadROITrackerObject(m_frameNum);
+					if (debugBadObjects.size() > 0)
+						std::cout << "Bad objects (to update tracker) = " << debugBadObjects.size() << "\n";
 				}
 
-			m_tracker.setROIs(bboxes, objIDs, labels, m_frame);
+				m_tracker.updateROIs(m_decipher.getBadROITrackerObject(m_frameNum), trkFrame);
+			}
+
+			// Add NEW YOLO object to tracker 
+				// SIAM tracker 
+			if (1) // DDEBUG DDEBUG PRINT  
+			{
+				std::vector <CObject> debugNewObjects = m_decipher.getNewObjects(m_frameNum);  if (debugNewObjects.size() > 0)   std::cout << "New objects (to update tracker) = " << debugNewObjects.size() << "\n";
+			}
+
+			m_tracker.setROIs(m_decipher.getNewObjects(m_frameNum), trkFrame);
+#else
+				//basicTracker
+				for (auto label : m_detectionTypes)
+					for (auto obj : m_decipher.getObjects(label)) {
+						bboxes.push_back(obj.m_bbox);
+						objIDs.push_back(obj.m_ID);
+						labels.push_back(obj.m_label);
+					}
+
+				m_tracker.clear(); // remove all ROIs
+				m_tracker.setROIs(bboxes, objIDs, labels, m_frame);
+#endif 
+			
 		}
 
 
@@ -456,7 +489,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 			// Provide YOLO detection ROIs to tracker:
 			std::vector <cv::Rect> ROIs_totrack;
 			std::vector <int> objIDs_totrack;
-			for (auto obj : m_Youtput) {
+			for (auto obj : m_Yolotput) {
 				ROIs_totrack.push_back(obj.box); // getprev 
 				objIDs_totrack.push_back(obj.id)
 			}
@@ -488,7 +521,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		int objects_tracked = processFrame(m_frame);
 
-		m_cycleNum++; // count actual processed frame cycles for timeForDetection(), timeForMotion(), timeForTracking()
+		//m_cycleNum++; // count actual processed frame cycles for timeForDetection(), timeForMotion(), timeForTracking()
 
 
 		if (m_decipher.getObjects().size() > 0) {
@@ -497,7 +530,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 			// scale back to original image size:
 			for (auto& obj : sirenObjs) {
-				obj.m_bbox = scaleBBox(obj.m_bbox, 1. / m_params.scale);
+				obj.m_bbox = UTILS::scaleBBox(obj.m_bbox, 1. / m_params.scale);
 				obj.m_bbox.x += m_camROI.x;
 				obj.m_bbox.y += m_camROI.y;
 			}
@@ -546,7 +579,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 #if 0
 		if (doDrawing) {
 			// Draw overlays :
-			//draw(m_frameOrg, m_Youtput , 1.0 / m_params.scale);
+			//draw(m_frameOrg, m_Yolotput , 1.0 / m_params.scale);
 			if (m_params.showMotion)
 				draw(m_frameOrg, m_BGSEGoutput, 1.0 / m_params.scale);
 
@@ -573,9 +606,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 		findContours(bgMask, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
 
 		// Contour analysis
-
-		//m_objects.clear(); // DDEBUG 
-
 		for (auto cont : contours) {
 			cv::Rect box = cv::boundingRect(cont);
 			int area = contourArea(cont, false);
@@ -613,13 +643,13 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 	bool CDetector::timeForTracking()
 	{ 
-		return (m_params.trackerType >= 0); 
+		return (m_params.trackerType >= 0 &&  !timeForDetection() &&  (m_frameNum+1) % m_params.trackerStep == 0);
 	}
 
 	// Get motion (bgseg) interval 
 	bool CDetector::timeForMotion()
 	{
-		return (m_params.motionType > 0 && m_cycleNum % m_params.skipMotionFrames == 0);
+		return (m_params.motionType > 0 && m_frameNum % m_params.skipMotionFrames == 0);
 	}
 
 	/*-------------------------------------------------------------------------
@@ -635,8 +665,9 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 			return false;
 
 		// Intraval cycle arrived:
-		if (m_cycleNum  % m_params.skipDetectionFrames == 0)
-			return true;
+		//if (m_cycleNum  % m_params.skipDetectionFrames == 0)
+		if (m_frameNum % m_params.skipDetectionFrames == 0)
+		return true;
 
 		// otherwise 
 		return   false;

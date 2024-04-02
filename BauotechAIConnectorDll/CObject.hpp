@@ -87,6 +87,7 @@ public:
 	DETECT_TYPE		m_detectionType;
 	int				m_frameNum;
 	int				m_moving; // pixel distance
+	int				m_age = 0;
 
 private:
 };
