@@ -37,8 +37,11 @@
 #include "../BauotechAIConnectorDll/yolo/yolo.hpp"
 #include "draw.hpp"
 
+
+int main_siamRPN(int argc, char** argv);
 //std::string cameraFname = R"(C:\Program Files\Bauotech\AI\cameras100.json)";
 std::string cameraFname = FILES::CAMERAS_FILE_NAME; //  R"(C:\Program Files\Bauotech\AI\cameras10.json)";
+
 
 
 // GLOBALS:
@@ -185,7 +188,7 @@ int main_SHOVAL(int argc, char* argv[])
 	std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjectVec;
 	ALGO_DETECTION_OBJECT_DATA AIObjects[MAX_CAMERAS][10];
 
-
+	 
 	videosNum = MIN(videosNum, MAX_CAMERAS);
 
 
@@ -302,7 +305,8 @@ int main_SHOVAL(int argc, char* argv[])
 	//------------------------------------------------------
 	int skipEveryframes = 0;
 	while (!frame.empty()) {
-		Sleep(15); // DDEBUG DDEBUG simulate RT camera 
+		if (ASYNC)
+			Sleep(10); // DDEBUG DDEBUG simulate RT camera 
 		/*
 		if (skipEveryframes > 0 && frameNum % (skipEveryframes + 1) != 0) {
 			cap >> frame;
@@ -406,8 +410,9 @@ int main_SHOVAL(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
-
 	return main_SHOVAL(argc, argv);
+	//return main_siamRPN(argc, argv);
+
 	//return main_camFileGen(argc, argv);
 
 }
