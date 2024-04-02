@@ -31,6 +31,13 @@ namespace  SIZES {
 	const int maxHumanHeight = 60 * 2;
 };
 
+namespace  TRACKER {
+	const float lowScore = 0.8;
+	const int maxHidden = 3;
+	const int scoreHistoryLen = 10;
+	const float scale = 0.4;
+};
+
 
 struct Config
 {
@@ -53,6 +60,7 @@ struct Config
 	// Algo
 	int motionType = 2;
 	int trackerType = 0;
+	int trackerStep = 1;
 	int MLType = 10;
 	float scale = 1.0; // 0.5;
 	int waitKeyTime=1;
