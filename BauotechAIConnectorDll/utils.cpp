@@ -16,173 +16,6 @@
 namespace efs = std::experimental::filesystem;
 namespace fs = std::filesystem;
 
-#if 0
-  std::vector <std::string>  FILE_UTILS::list_files_in_folder(std::string path, bool reverseOrder)
-  {
-	  std::vector <std::string> filesList, filesList_reverseOrder;
-	  //std::string path = "/path/to/directory";
-	  for (const auto & entry : fs::directory_iterator(path))
-		  filesList.push_back(entry.path().string());
-	  //std::cout << entry.path() << std::endl;
-
-	  if (!reverseOrder) 
-		return filesList;
-
-	  // REVERSE ORDER 
-	  for (int r = filesList.size() - 1; r >= 0; r--)
-		  filesList_reverseOrder.push_back(filesList[r]);
-
-	  return filesList_reverseOrder;
-  }
-
-  std::vector <std::string>  FILE_UTILS::list_sorted_files_in_folder(std::string path)
-  {
-	  std::vector <std::string> filesList, filesList_reverseOrder;
-	  //std::string path = "/path/to/directory";
-	  for (const auto & entry : fs::directory_iterator(path))
-		  filesList.push_back(entry.path().string());
-
-	  // Sort file names
-	  std::sort(filesList.begin(), filesList.end(), [](const std::string  & a, const std::string & b) -> bool { return a < b; });
-
-	  return filesList;
-
-  }
-  
-  
-  
-  std::string FILE_UTILS::change_extension(const std::string & filename, const std::string & extension)
-  {
-    char path[_MAX_PATH];
-    char drive[_MAX_DRIVE];
-    char dir[_MAX_DIR];
-    char fname[_MAX_FNAME];
-    char ext[_MAX_EXT];
-    
-    _splitpath_s(filename.c_str(), drive, dir, fname, ext);
-    _makepath_s(path, drive, dir, fname, extension.c_str());
-    
-    return path;
-  }
-
-std::string FILE_UTILS::remove_extension(const std::string  filename)
-  {
-    char path[_MAX_PATH];
-    char drive[_MAX_DRIVE];
-    char dir[_MAX_DIR];
-    char fname[_MAX_FNAME];
-    char ext[_MAX_EXT];
-    
-    _splitpath_s(filename.c_str(), drive, dir, fname, ext);
-    _makepath_s(path, drive, dir, fname, NULL);
-    
-    return path;
-  }
-
-std::string FILE_UTILS::find_path(const std::string  filename)
-  {
-    char path[_MAX_PATH];
-    char drive[_MAX_DRIVE];
-    char dir[_MAX_DIR];
-    char fname[_MAX_FNAME];
-    char ext[_MAX_EXT];
-    
-    _splitpath_s(filename.c_str(), drive, dir, fname, ext);
-    _makepath_s(path, drive, dir, NULL , NULL);
-    
-    return std::string(path);
-  }
-
-std::string FILE_UTILS::find_fname(const std::string  filename)
-{
-	char path[_MAX_PATH];
-	char drive[_MAX_DRIVE];
-	char dir[_MAX_DIR];
-	char fname[_MAX_FNAME];
-	char ext[_MAX_EXT];
-
-	_splitpath_s(filename.c_str(), drive, dir, fname, ext);
-	_makepath_s(path, drive, dir, NULL, NULL);
-
-	return std::string(fname);
-}
-
-    std::string FILE_UTILS::find_extension(const std::string  &filename)
-  {
-    char path[_MAX_PATH];
-    char drive[_MAX_DRIVE];
-    char dir[_MAX_DIR];
-    char fname[_MAX_FNAME];
-    char ext[_MAX_EXT];
-    
-    _splitpath_s(filename.c_str(), drive, dir, fname, ext);
-
-	std::string extStr(ext);
-	extStr.erase(std::remove(extStr.begin(), extStr.end(), '.'), extStr.end());
-
-	return extStr;
-  }
- std::string FILE_UTILS::add_soffix(const std::string & filename, const std::string postfix)
-  {
-    char path[_MAX_PATH];
-    char drive[_MAX_DRIVE];
-    char dir[_MAX_DIR];
-    char fname[_MAX_FNAME];
-    char ext[_MAX_EXT];
-    
-    _splitpath_s(filename.c_str(), drive, dir, fname, ext);
-	strcat_s(fname ,postfix.c_str());
-    _makepath_s(path, drive, dir, fname, ext);
-    
-    return path;
-  }
-
-
-
-  bool FILE_UTILS::file_exists(const std::string & filename)
-  {
-    return GetFileAttributes(stringToWstring(filename).c_str()) != (DWORD)-1;
-  }
-
-  bool FILE_UTILS::folder_exists(const std::string & filename)
-  {
-    //return GetFileAttributes((LPCWSTR)filename.c_str()) != (DWORD)-1;
-	  DWORD ftype = GetFileAttributes(stringToWstring(filename).c_str());
-	  if (INVALID_FILE_ATTRIBUTES == ftype) 
-		  return false;
-	  return (FILE_ATTRIBUTE_DIRECTORY  & GetFileAttributes(stringToWstring(filename).c_str()));
-  }
- 
-
-  bool FILE_UTILS::is_folder(std::string filename)
-  {
-		  return (GetFileAttributes(stringToWstring(filename).c_str()) == FILE_ATTRIBUTE_DIRECTORY);
-  }
-
-  bool FILE_UTILS::is_image_extension(const std::string fname_)
-  {
-	  std::string fname = fname_;
-
-	  if (is_folder(fname))
-		  return false;
-
-
-	  std::transform(fname.begin(), fname.end(), fname.begin(), ::tolower);
-
-	  if (find_extension(fname) == "jpg" ||
-		  find_extension(fname) == "png" ||
-		  find_extension(fname) == "gif" ||
-		  find_extension(fname) == "tiff" ||
-		  find_extension(fname) == "tif" ||
-		  find_extension(fname) == "bmp" )
-		  return true;
-
-	  return false;
-}
-
-
-#endif
-
 
   std::wstring stringToWstring(const std::string& t_str)
   {
@@ -667,8 +500,8 @@ std::string FILE_UTILS::find_fname(const std::string  filename)
 
   }
 
-
-  cv::Rect scaleBBox(cv::Rect rect, float scale)
+#if 1
+  cv::Rect UTILS::scaleBBox(cv::Rect rect, float scale)
   {
 	  cv::Rect sBBox;
 
@@ -680,7 +513,7 @@ std::string FILE_UTILS::find_fname(const std::string  filename)
 	  return sBBox;
   }
 
-  cv::Rect2f scaleBBox(cv::Rect2f rect, float scale)
+  cv::Rect2f UTILS::scaleBBox(cv::Rect2f rect, float scale)
   {
 	  cv::Rect2f sBBox;
 
@@ -691,6 +524,8 @@ std::string FILE_UTILS::find_fname(const std::string  filename)
 
 	  return sBBox;
   }
+#endif 
+
 
   cv::Rect2f resizeBBox(cv::Rect2f rect, float scale)
   {
@@ -915,7 +750,7 @@ std::string FILE_UTILS::find_fname(const std::string  filename)
 
 	  return true;
   }
-  
+
   float similarBox(cv::Rect r1, cv::Rect r2)
   {
 	  float ratioW = (float)r1.width / (float)r2.width;

@@ -2,6 +2,9 @@
 #include <Windows.h>
 #include <string>
 #include <vector>
+#include <fstream> 
+#include <algorithm>
+
 #include <boost/lexical_cast.hpp> 
 
 
@@ -90,6 +93,25 @@ inline bool isEmpty(cv::Rect2f r) { return (r.width == 0 || r.height == 0); }
 cv::Rect resize(cv::Rect r, cv::Size newDim); 
 bool similarAreas(cv::Rect r1, cv::Rect r2, float absRatio);
 bool similarBox(cv::Rect r1, cv::Rect r2, float absRatio);
+
+template <typename T>
+bool similarBox2(T r1, T r2, float absRatio)
+{
+	float ratio = (float)r1.width / (float)r2.width;
+	if (ratio > 1.)
+		ratio = 1. / ratio;
+	if (ratio < absRatio)
+		return false;
+	ratio = (float)r1.height / (float)r2.height;
+	if (ratio > 1.)
+		ratio = 1. / ratio;
+	if (ratio < absRatio)
+		return false;
+
+	return true;
+}
+
+
 float similarBox(cv::Rect r1, cv::Rect r2);
 float relativeDist(cv::Rect box1, cv::Rect box2);
 
@@ -106,6 +128,42 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 		 cv::line(img, cv::Point(r.br().x, r.tl().y), cv::Point(r.tl().x, r.br().y), color, thickness);
 	 };
 
+
+#if 0
+	 template <typename T>
+	 static T scaleBBox(T rect, float scale)
+	 {
+		 T sBBox;
+
+		 sBBox.width = int((float)rect.width * scale);
+		 sBBox.height = int((float)rect.height * scale);
+		 sBBox.x = int((float)rect.x * scale);
+		 sBBox.y = int((float)rect.y * scale);
+
+		 return sBBox;
+	 }
+#endif 
+	 template <typename T> 
+	 static bool   checkBounderies(T& box, cv::Size imgSize)
+	 {
+		 T origBbox = box;
+
+		 if (box.x < 0)
+			 box.x = 0;
+		 if (box.y < 0)
+			 box.y = 0;
+		 if (box.x + box.width >= imgSize.width)
+			 box.width = imgSize.width - box.x - 1;
+		 if (box.y + box.height >= imgSize.height)
+			 box.height = imgSize.height - box.y - 1;
+
+		 if (box.x != origBbox.x || box.y != origBbox.y || box.width != origBbox.width || box.height != origBbox.height)
+			 int debug = 10;
+
+
+		 return  (box.x != origBbox.x || box.y != origBbox.y || box.width != origBbox.width || box.height != origBbox.height);
+	 }
+#if 0
 	 static void   checkBounderies(cv::Rect& box, cv::Size imgSize)
 	 {
 		 if (box.x < 0)
@@ -129,6 +187,7 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 		 if (box.y + box.height >= imgSize.height)
 			 box.height = imgSize.height - box.y - 1;
 	 }
+
 	 static void   checkBounderies(cv::Rect2f  &box, cv::Size imgSize)
 	 {
 		 if (box.x < 0)
@@ -140,8 +199,20 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 		 if (box.y + box.height >= (float)imgSize.height)
 			 box.height = (float)imgSize.height - box.y - 1.;
 	 }
-
+#endif 
 	 static bool nearEdges(cv::Size size, cv::Rect box);
+
+	 static cv::Rect2f scaleBBox(cv::Rect2f rect, float scale);
+	 static cv::Rect   scaleBBox(cv::Rect rect, float scale);
+
+
+	 static bool isFileExist(std::string fname) 
+	 {
+		 std::string fileName(fname);
+		 ifstream fin(fileName.c_str());
+		 return (!fin.fail());
+		 //return (0xffffffff = !GetFileAttributes(LPCSTR(fname.c_str()));
+	 }
 
  };
 
@@ -212,8 +283,8 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
  // RECT utilities 
  bool isIn(cv::Point hitPixel, cv::Rect2f  roi);
  cv::Rect2f extendBBox(cv::Rect2f rect_, cv::Point2f p);
- cv::Rect2f scaleBBox(cv::Rect2f rect, float scale);
- cv::Rect   scaleBBox(cv::Rect rect, float scale);
+ 
+ 
  cv::Rect centerBox(cv::Point center, cv::Size size);
  float    bboxRatio(cv::Rect2f r1, cv::Rect2f r2);
  float    bboxOrderRatio(cv::Rect2f r1, cv::Rect2f r2); // order is matter
@@ -224,6 +295,18 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
  
  float bboxesBounding(cv::Rect2f r1, cv::Rect2f r2); // Ratio of r1 overlapping r2
  float OverlappingRatio(cv::Rect2f r1, cv::Rect2f r2); // Ratio of overlapping (bi directional)
+
+ // Max Ratio of r1 & r2 overlapping 
+ template <typename T>
+ float OverlappingRatio2(T r1, T r2)
+ {
+	 int overlappedArea = (r1 & r2).area();
+	 if (overlappedArea == 0)
+		 return 0;
+
+	 return   r1.area() < r2.area() ? overlappedArea / r1.area() : overlappedArea / r2.area();
+ }
+
  int depth2cvType(int depth);
  cv::Mat converPTR2MAT(void* data, int height, int width, int depth);
 
