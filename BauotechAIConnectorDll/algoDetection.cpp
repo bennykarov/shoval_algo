@@ -327,8 +327,8 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 		}	
 
 		int debugLevel = 1;
-		m_tracker.init(m_params.useGPU, TRACKER::scale, debugLevel); //siam tracker 
-		//m_tracker.init(m_params.trackerType, debugLevel);
+		if (m_params.trackerType > -1)
+			m_tracker.init(m_params.useGPU, TRACKER::scale, debugLevel); //siam tracker 
 		
 		m_decipher.init(m_params.debugLevel);
 		m_decipher.setPersonDim(MAX_PERSON_DIM); // DDEBUG CONST
@@ -366,7 +366,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		// BG seg detection
 		//--------------------
-#if 0
+#if 1
 		if (timeForMotion()) {
 			m_bgMask = m_bgSeg.process(frame);
 			if (!m_bgMask.empty()) {
@@ -387,80 +387,63 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 		//--------------------
 		m_Yolotput.clear();
 		if (timeForDetection()) {
-			cv::Mat frameEnhanced; // DDEBUG TEST 
 			m_yolo.detect(frame, m_Yolotput);
 		}
 
 
-		// Tracking:
+		// Track:
 		//-------------------
-
-		if (timeForDetection()) {
-			std::vector <cv::Rect> yoloBoxes;
-			for (auto yObj : m_Yolotput)
-				yoloBoxes.push_back(yObj.box);
+		if (m_params.trackerType > -1) {
+			m_TrackerObjects.clear();
+			m_tracker.setNewFrame(frame); // must come before all tracker activities 
 		}
-
-
-		m_TrackerObjects.clear();
 
 		if (timeForTracking()) {
 			m_tracker.track(frame, m_TrackerObjects, m_frameNum);
 		}
 
-		m_TrackerOutput.clear();
-		for (auto obj : m_TrackerObjects)
-			m_TrackerOutput.push_back(obj.m_bbox);
-
 		std::vector <int>   TrkDuplicateInds = m_decipher.add(m_TrackerObjects, m_Yolotput, m_frameNum);
 
 
 		int mode = timeForDetection() ? 1 : 0;
+		/*-------------------------------------------
+		 * Deciphering YOLO &  tracker objects , 
+		 * Build the final detectedObject list 
+		 --------------------------------------------*/
 		m_decipher.track(mode);
 
-		//----------------------
-		// update tracker ROIs:
-		//----------------------
-		std::vector debugIDs = m_decipher.getIDStoPrune();
-		if (!debugIDs.empty())
-			m_tracker.prune(debugIDs);
-		static bool debugTrackerFirstTime = true;
+		if (m_params.trackerType > -1) {
+			// Tracker postprocess:
+			// 1. Prune objects (Decipher decision)
+			std::vector debugIDs = m_decipher.getIDStoPrune();
+			if (!debugIDs.empty())
+				m_tracker.prune(debugIDs);
+			m_tracker.setROIs(m_decipher.getTrkObjsToRenew());
+		}
 		//-------------------------------------------------------------
 		// Set fresh ROIs  to tracker (in case YOLO succeed to detect)
 		//-------------------------------------------------------------
-		if (m_Yolotput.size() > 0) {
-			//--------------------------------------------------
-			// Set Tracker with fresh YOLO detection boxes,- 
-			// leave the ones was not detected by YOLO
-			//--------------------------------------------------\
-			`
-			std::vector <cv::Rect> bboxes;
-			std::vector <int> objIDs , labels;			
-				
-#if 1 
-
-			if (1) 
-			{
-				if (1) // DDEBUG DDEBUG PRINT  
-				{
-					std::vector <CObject> debugBadObjects = m_decipher.getBadROITrackerObject(m_frameNum);
-					if (debugBadObjects.size() > 0)
-						std::cout << "Bad objects (to update tracker) = " << debugBadObjects.size() << "\n";
+		if (m_Yolotput.size() > 0 && m_params.trackerType > -1) {			 
+#if 1 // SIAM tracker 
+			
+			// 2. Add new objects, update (refrash) "bad" ROIs:
+			m_tracker.setROIs(m_decipher.getBadROITrackerObject(m_frameNum));
+			m_tracker.setROIs(m_decipher.getNewObjects(m_frameNum));
+			/* {// DDEBUG DDEBUG DDEBUG 
+				auto yoloObjects = m_decipher.getObjects(m_frameNum);
+				for (auto &obj : yoloObjects) {
+					obj.m_bbox = resizeBBox(obj.m_bbox, 1.4);
 				}
-
-				m_tracker.updateROIs(m_decipher.getBadROITrackerObject(m_frameNum), trkFrame);
+				m_tracker.setROIs(yoloObjects);
 			}
+			*/
 
-			// Add NEW YOLO object to tracker 
-				// SIAM tracker 
-			if (1) // DDEBUG DDEBUG PRINT  
-			{
-				std::vector <CObject> debugNewObjects = m_decipher.getNewObjects(m_frameNum);  if (debugNewObjects.size() > 0)   std::cout << "New objects (to update tracker) = " << debugNewObjects.size() << "\n";
-			}
-
-			m_tracker.setROIs(m_decipher.getNewObjects(m_frameNum), trkFrame);
 #else
-				//basicTracker
+			// missing basic-tracker-API function: m_tracker.setROIs(m_decipher.getNewObjects(m_frameNum), m_frame);
+			// 'Basic' Tracker
+			std::vector <cv::Rect> bboxes;
+			std::vector <int> objIDs, labels;
+			//basicTracker
 				for (auto label : m_detectionTypes)
 					for (auto obj : m_decipher.getObjects(label)) {
 						bboxes.push_back(obj.m_bbox);
@@ -474,28 +457,16 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 			
 		}
 
-
-		if (m_params.debugLevel > 1 &&  !m_bgMask.empty())
-			cv::imshow("m_bgMask", m_bgMask);
+		if (m_params.debugLevel > 1 && !m_bgMask.empty()) {
+			cv::Mat display;
+			cv::resize(m_bgMask, display, cv::Size(0, 0), 0.5, 0.5);
+			cv::imshow("m_bgMask", display);
+		}
 
 		int tracked_count=0;
 		for (auto label : m_detectionTypes)
 			tracked_count += m_decipher.getObjects(label).size();
-		//tracked_count = m_BGSEGoutput.size();
-
-#if 0
-		if (m_frameNum == 2400000)
-		{
-			// Provide YOLO detection ROIs to tracker:
-			std::vector <cv::Rect> ROIs_totrack;
-			std::vector <int> objIDs_totrack;
-			for (auto obj : m_Yolotput) {
-				ROIs_totrack.push_back(obj.box); // getprev 
-				objIDs_totrack.push_back(obj.id)
-			}
-			m_tracker.setROIs(ROIs_totrack, m_frame, m_frameNum);
-		}
-#endif 
+ 
 
 		return tracked_count;
 	}
@@ -520,9 +491,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 			m_frame = m_frameROI;
 
 		int objects_tracked = processFrame(m_frame);
-
-		//m_cycleNum++; // count actual processed frame cycles for timeForDetection(), timeForMotion(), timeForTracking()
-
 
 		if (m_decipher.getObjects().size() > 0) {
 
@@ -649,7 +617,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 	// Get motion (bgseg) interval 
 	bool CDetector::timeForMotion()
 	{
-		return (m_params.motionType > 0 && m_frameNum % m_params.skipMotionFrames == 0);
+		return (m_params.motionType > 0 && !timeForDetection() &&  (m_frameNum+1) % m_params.skipMotionFrames == 0);
 	}
 
 	/*-------------------------------------------------------------------------
