@@ -204,6 +204,9 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 
 	 static cv::Rect2f scaleBBox(cv::Rect2f rect, float scale);
 	 static cv::Rect   scaleBBox(cv::Rect rect, float scale);
+	 static cv::Rect   mergeBBoxSize(cv::Rect rect1, cv::Rect rect2, float AlphaBland);
+	 static cv::Rect   mergeBBoxes(cv::Rect rect1, cv::Rect rect2, float AlphaBland);
+	 //static cv::Rect   mergeBBoxes2(cv::Rect rect1, cv::Rect rect2, float AlphaBland);
 
 
 	 static bool isFileExist(std::string fname) 
@@ -288,6 +291,7 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
  cv::Rect centerBox(cv::Point center, cv::Size size);
  float    bboxRatio(cv::Rect2f r1, cv::Rect2f r2);
  float    bboxOrderRatio(cv::Rect2f r1, cv::Rect2f r2); // order is matter
+ cv::Rect resizeBBox(cv::Rect rect, float scale);
  cv::Rect2f resizeBBox(cv::Rect2f rect, float scale);
  cv::Rect2f resizeBBox(cv::Rect2f rect, cv::Size size, float scale);
  void blendBbox(cv::Rect2f &r1, cv::Rect2f r2, float alpha = 0.3);

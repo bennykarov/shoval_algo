@@ -500,6 +500,40 @@ namespace fs = std::filesystem;
 
   }
 
+
+  /*------------------------------------------------------------------------------------
+   * Inherint (using Alpha Blen) rect2 size to rect1 while keeping the rect1 position 
+   * Need for Tracker box to keep the original size of Yolo detection
+   * rect1: the fresh one (tracker)
+   * rect2: The old but strong (YOLO) one. use its Size
+   *------------------------------------------------------------------------------------
+   */
+  cv::Rect   UTILS::mergeBBoxSize(cv::Rect rect1, cv::Rect rect2, float AlphaBland)
+  {
+	  float width = float(rect2.width) * AlphaBland + float(rect1.width) * (1. - AlphaBland);
+	  float height = float(rect2.height) * AlphaBland + float(rect1.height) * (1. - AlphaBland);
+	  float x = (float)rect1.x - (width - float(rect2.width)) / 2.;
+	  float y = (float)rect1.y - (height - float(rect2.height)) / 2.;
+
+	  return cv::Rect((int)std::round(x), (int)std::round(y), (int)std::round(width), (int)std::round(height));
+
+  }
+
+  /*-----------------------------------------------------------------------------------------------------
+  * Merge 2 boxes - using Alpha (rect1*Alpha + rect2*(1-alpha)
+  *-----------------------------------------------------------------------------------------------------*/
+  cv::Rect   UTILS::mergeBBoxes(cv::Rect rect1, cv::Rect rect2, float AlphaBland)
+  {
+	  float width = float(rect1.width) * AlphaBland + float(rect2.width) * (1. - AlphaBland);
+	  float height = float(rect1.height) * AlphaBland + float(rect2.height) * (1. - AlphaBland);
+	  float x = (float)rect1.x * AlphaBland + (float)rect2.x * (1. - AlphaBland);
+	  float y = (float)rect1.y * AlphaBland + (float)rect2.y * (1. - AlphaBland);
+
+	  return cv::Rect((int)std::round(x), (int)std::round(y), (int)std::round(width), (int)std::round(height));
+
+  }
+  
+
 #if 1
   cv::Rect UTILS::scaleBBox(cv::Rect rect, float scale)
   {
@@ -530,6 +564,22 @@ namespace fs = std::filesystem;
   cv::Rect2f resizeBBox(cv::Rect2f rect, float scale)
   {
 	  cv::Rect2f sBBox;
+
+	  sBBox = rect;
+	  float  wDiff = rect.width * (1. - scale);
+	  float hDiff = rect.height * (1. - scale);
+	  sBBox.width -= wDiff;
+	  sBBox.height -= hDiff;
+	  sBBox.x += wDiff / 2.;
+	  sBBox.y += hDiff / 2.;
+
+	  return sBBox;
+
+  }
+
+  cv::Rect resizeBBox(cv::Rect rect, float scale)
+  {
+	  cv::Rect sBBox;
 
 	  sBBox = rect;
 	  float  wDiff = rect.width * (1. - scale);
