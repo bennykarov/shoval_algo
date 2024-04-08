@@ -71,6 +71,22 @@ cv::Rect scaleBBox_(cv::Rect rect, float scale)
     return sBBox;
 }
 
+cv::Rect2f resizeBBox_(cv::Rect2f rect, float scale)
+{
+    cv::Rect2f sBBox;
+
+    sBBox = rect;
+    float  wDiff = rect.width * (1. - scale);
+    float hDiff = rect.height * (1. - scale);
+    sBBox.width -= wDiff;
+    sBBox.height -= hDiff;
+    sBBox.x += wDiff / 2.;
+    sBBox.y += hDiff / 2.;
+
+    return sBBox;
+
+}
+
 //----------------------------------------------------------------------------------------------
 // Find Rects1 (trackerBoxes) that is similar (overlapping) to Rects2 (yoloBoxes)
 // return thier Indices list
@@ -102,9 +118,6 @@ std::vector <tuple<int, int>>  findDuplicated(std::vector <cv::Rect>  trackerBox
 
 
             float dimRatrio = 0.6; 
-            if (!similarBox2(box1, box2, dimRatrio))
-                int dbug = 10;
-
 
             if (dimRatrio < similarDimRatio)
                 j = 1000; continue;// out of yoloBoxes loop
@@ -157,7 +170,7 @@ bool CSiamTracker::init(bool GPU, float scale)
         params.target = target;
         //m_tracker = TrackerDaSiamRPN::create(params);
 
-        for (int i = 0; i < m_MaxTracker; i++) {
+        for (int i = 0; i < m_MaxTrackers; i++) {
             m_tracker.push_back(TrackerDaSiamRPN::create(params));
             CObject trackObj(cv::Rect(), m_frameNum, 0, DETECT_TYPE::Tracking, -1);  
             m_oks.push_back(false);
@@ -190,44 +203,63 @@ bool CSiamTracker::init(bool GPU, float scale, int debugLevel, int badFramesTore
     m_debugLevel = debugLevel;
     init(scale);
 
+    m_trackeractive = true;
+
     return true;
 }
 
 
+/*-------------------------------------------------------------------------
+* Muist come BEFORE all tracking processes (setRIO(), Track()) 
+* Due to performance issues (resize only once 
+ -------------------------------------------------------------------------*/
+void CSiamTracker::setNewFrame(cv::Mat frame)
+{
+    if (!m_trackeractive)
+        return;
+
+    cv::resize(frame, m_frame, cv::Size(0, 0), m_scale, m_scale);
+
+}
+
 int CSiamTracker::track(cv::Mat frame_, std::vector <CObject>& objects, int frameNum)
 {
-    std::vector <int> toPruneInd;
+    if (!m_trackeractive)
+        return 0;
+
+    cv::resize(frame_, m_frame, cv::Size(0, 0), m_scale, m_scale);
+    return track(objects, frameNum);
+}
+
+int CSiamTracker::track(std::vector <CObject>& objects, int frameNum)
+{
     std::fill(m_oks.begin(), m_oks.end(), false);
 
     m_frameNum = frameNum;
-
-    //std::cout << "Active trackers = " << m_activesInd.size() << "\n";
-
-    cv::resize(frame_, m_frame, cv::Size(0, 0), m_scale, m_scale);
-
 
     //for (int i = 0; i < m_tracker.size(); i++) {
     for (auto i : m_activesInd) {
         m_scaledBbox = scaleBBox_(m_objects[i].m_bbox, m_scale);
         m_oks[i] = m_tracker[i]->update(m_frame, m_scaledBbox);
-        if (0) // DDEBUG CHECKS:
-        {
-            if (!m_oks[i])
-                int debug = 10;
-            cv::Rect debugBox = m_scaledBbox;
-            bool badRect = UTILS::checkBounderies(debugBox, frame_.size());
-            if (badRect)
-                int debug = 11;
-        }
+                if (0) // DDEBUG CHECKS:
+                {
+                    if (!m_oks[i])   int debug = 10;
+                    cv::Rect debugBox = m_scaledBbox;
+                    bool badRect = UTILS::checkBounderies(debugBox, m_frame.size());
+                    if (badRect) int debug = 11;
+                }
         m_objects[i].m_bbox = scaleBBox_(m_scaledBbox, 1. / m_scale);
-        m_objects[i].m_frameNum = frameNum; 
-        m_objectsScores[i].push_back(m_tracker[i]->getTrackingScore());
-        float scoreDebug = m_tracker[i]->getTrackingScore();
-        int debug2 = 10;
+        m_objects[i].m_confidance = m_oks[i] ? m_tracker[i]->getTrackingScore() : 0;
+        m_objects[i].m_detectionType = DETECT_TYPE::Tracking;
+        m_objects[i].m_frameNum = frameNum;
+
+        m_objectsScores[i].push_back(m_objects[i].m_confidance); // ??? is needed ?
     }
 
     objects.clear();
 
+
+#if 0
     // Remove untracked objects or with a bad score (low score 'TRACKER::maxHidden' times sequentially)
     for (auto i : m_activesInd) {
         //if (!m_oks[i] ||  badScoresLen(i) >= TRACKER::maxHidden) {
@@ -238,6 +270,7 @@ int CSiamTracker::track(cv::Mat frame_, std::vector <CObject>& objects, int fram
             std::cout << "remove objID " << m_objects[i].m_ID << "\n";
             }
     }
+#endif 
 
     // Ad to return objects
     for (auto i : m_activesInd)
@@ -249,68 +282,30 @@ int CSiamTracker::track(cv::Mat frame_, std::vector <CObject>& objects, int fram
 }
 
 
-
-
-#if 0
-int CSiamTracker::updateROIs(std::vector <cv::Rect> yoloBoxes)
+/*--------------------------------------------------------------------------------
+* set ROI to tracker.
+* If newObj.m_ID exist (=tracker is active), update its ROI
+* If not - find free Tracker and init with new ROI
+*   Note that in that case , it is possible that there is no free tracker be set
+--------------------------------------------------------------------------------*/
+int CSiamTracker::setROIs(std::vector <CObject> newObjs)
 {
-    std::vector <cv::Rect>  trackerBoxes;
-    int rectUpdated = 0;
+    int roiSet = 0;
 
 
-    for (auto obj : m_objects)
-        trackerBoxes.push_back(obj.m_bbox);
-
-    std::vector <tuple<int, int>>  matcheInds = findDuplicated(trackerBoxes, yoloBoxes);
-
-
-
-    return rectUpdated;
-
-}
-#endif 
-
-#if 0
-int  CSiamTracker::setROI(cv::Mat image, cv::Rect selectRect, int ind)
-{
-    m_tracker[ind]->init(image, selectRect);
-    m_objects[ind].m_bbox = selectRect;
-    m_activesInd.push_back(ind);
-}
-
-int CSiamTracker::setROI(cv::Mat image, cv::Rect selectRect)
-{
-    
-    cv::resize(m_frame, image, cv::Size(0, 0), 0.5, 0.5);
-
-    int trkInd = getFreeTracker();
-    if (trkInd >= 0) {
-        m_tracker[trkInd]->init(m_frame, selectRect);
-        m_objects[trkInd].m_bbox = selectRect;
-        m_activesInd.push_back(trkInd);
+    for (auto& newObj : newObjs) {
+        int trkID = setROI(newObj);
+        if (trkID >= 0)
+            roiSet++;
+        else
+            int debug = 10;
     }
-    else
-        std::cout << "Cant init tracker (too many) \n";
-
-    return trkInd;
-}
-#endif 
-
-int CSiamTracker::setROIs(std::vector <CObject> newObjs, cv::Mat image_)
-{
-    int roiCreated = 0;
-
-    cv::resize(image_, m_frame, cv::Size(0, 0), m_scale, m_scale);
-
+#if 0
     for (auto& obj : newObjs) {
         int trkInd = getFreeTracker();
         if (trkInd >= 0) {
             m_objects[trkInd] = obj;
             m_scaledBbox = scaleBBox_(obj.m_bbox, m_scale);
-            /*
-                m_scaledBbox = scaleBBox_(obj.m_bbox, m_scale * 1.3); // DDEBUG enlarge box
-                bool badRect = UTILS::checkBounderies(m_scaledBbox, image_.size()); // DDEBUG 
-            */
 
             m_tracker[trkInd]->init(m_frame, m_scaledBbox);
             obj.m_bbox = scaleBBox_(m_scaledBbox, 1. / m_scale);
@@ -321,11 +316,59 @@ int CSiamTracker::setROIs(std::vector <CObject> newObjs, cv::Mat image_)
             std::cout << "Cant init tracker (too many) \n";
     }
 
-    std::cout << "SIAM SIAM SIAM total=" << m_activesInd.size() << "(add " << roiCreated << ")\n";
+#endif 
 
-
-    return roiCreated;
+    return roiSet;
 }
+
+/*--------------------------------------------------------------------------------
+* set ROI to tracker.
+* If newObj.m_ID exist(= tracker is active), update its ROI
+* If not - find free Tracker and init with new ROI
+* Note that in that case, it is possible that there is no free tracker be set
+-------------------------------------------------------------------------------- */
+
+int CSiamTracker::setROI(CObject obj)
+{
+    int trkInd = -1;
+
+    int id = obj.m_ID;
+    //  Search if ID is among the active trackers :
+    //auto it = std::find_if(m_objects.begin(), m_objects.end(),    [&id](const CObject& obj) { return obj.m_ID == id; });
+    for (auto ind : m_activesInd)
+        if (m_objects[ind].m_ID == obj.m_ID) {
+            trkInd = ind;
+            break;
+        }
+
+    if (trkInd < 0) {// ID not tracked - create new (=find free one):
+        trkInd = getFreeTracker();  // find free tracker ("new" ROI)
+        m_activesInd.push_back(trkInd);
+        std::cout << "SIAM TRACKER: total=" << m_activesInd.size() << "(Add ID = " << m_objects[trkInd].m_ID << ")\n";
+
+        if (m_activesInd.size() > m_MaxTrackers)
+            int debbug = 10; // ERROR
+    }
+
+
+    if (trkInd < 0) {
+        std::cout << "Cant init tracker (too many) \n";
+        return  trkInd;
+    }
+
+	m_objects[trkInd] = obj;
+	m_scaledBbox = scaleBBox_(obj.m_bbox, m_scale);
+
+    if (m_enlargeBBox != 1.) 
+        m_scaledBbox = resizeBBox_(m_scaledBbox, m_enlargeBBox);// enlarge to better tracking 
+
+	m_tracker[trkInd]->init(m_frame, m_scaledBbox);
+	obj.m_bbox = scaleBBox_(m_scaledBbox, 1. / m_scale);
+
+	return true;
+}
+
+
 
 #if 0
 int CSiamTracker::setROI(cv::Mat image_, CObject newObj)
@@ -342,7 +385,6 @@ int CSiamTracker::setROI(cv::Mat image_, CObject newObj)
 
     return ind;
 }
-#endif 
 int CSiamTracker::updateROIs(std::vector <CObject> toUpdateObjs, cv::Mat image_)
 {
     int roiUpdated= 0;
@@ -371,12 +413,15 @@ int CSiamTracker::updateROIs(std::vector <CObject> toUpdateObjs, cv::Mat image_)
         roiUpdated++;
     }
 
-    setROIs(toUpdateObjs, image_);
+    setROIs(toUpdateObjs);
 
     return roiUpdated;
 }
+#endif 
 
-
+/*------------------------------------------------------------
+* Prune using obj.m_ID (recieved from Concluder())
+ ------------------------------------------------------------*/
 void CSiamTracker::prune(std::vector <int> objIDs)
 {
     for (auto id : objIDs)
@@ -384,15 +429,19 @@ void CSiamTracker::prune(std::vector <int> objIDs)
 }
 
 
-bool CSiamTracker::removeROI(int ind)
+/*----------------------------------------------
+* This function just halt tracker 
+* Remove the ROI info and remove from Active tracker list
+ ----------------------------------------------*/
+bool CSiamTracker::removeROI(int trkInd)
 {
     // erase the i element
-    auto it = std::find(m_activesInd.begin(), m_activesInd.end(), ind);
+    auto it = std::find(m_activesInd.begin(), m_activesInd.end(), trkInd);
     if (it != m_activesInd.end()) {
         m_activesInd.erase(it);
-        m_objectsScores[ind].clear();
+        m_objectsScores[trkInd].clear();
 
-        std::cout << "SIAM SIAM SIAM total=" << m_activesInd.size() << "(remove ID = " << m_objects[ind].m_ID <<  ")\n";
+        std::cout << "SIAM Tracker: total=" << m_activesInd.size() << "(remove ID = " << m_objects[trkInd].m_ID <<  ")\n";
 
         return true;
     }
@@ -402,6 +451,8 @@ bool CSiamTracker::removeROI(int ind)
 
 bool CSiamTracker::removeROIbyID(int objID)
 {
+    if (objID == 3)
+        int debug = 10;
     // erase the i element
     for (auto ind : m_activesInd) 
         if (m_objects[ind].m_ID == objID) {
@@ -515,7 +566,7 @@ int run(std::string inputName)
         //int trkInd = m_tracker.setROI(image, newObj);
     }
     // multi ROIs setting
-    m_tracker.setROIs(objectList, image);
+    m_tracker.setROIs(objectList);
 
     TickMeter tickMeter;
     Mat render_image;

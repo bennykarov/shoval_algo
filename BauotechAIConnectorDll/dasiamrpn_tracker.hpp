@@ -17,7 +17,7 @@ using namespace cv;
 using namespace cv::dnn;
 
 
-#define MAX_TRACKERS  15
+#define MAX_TRACKERS  10
 
 
 class CSiamTracker {
@@ -30,17 +30,21 @@ public:
         m_pathToModel = pathToModel;
     }
 
+    void setNewFrame(cv::Mat frame);
+
     //int setROI(cv::Mat image, CObject newObj);
-    int  setROI(cv::Mat image, cv::Rect selectRect, int ind);
-    int setROIs(std::vector <CObject> newObjs, cv::Mat image);
-    int updateROIs(std::vector <CObject> newObjs, cv::Mat image);
+    int setROI(CObject newObjs);
+    int setROIs(std::vector <CObject> newObjs);
+    //int updateROI(std::vector <CObject> newObjs, cv::Mat image);
+    //int updateROIs(std::vector <CObject> newObjs, cv::Mat image);
     void prune(std::vector <int> ids);
 
-    bool removeROI(int ind);
-    bool removeROIbyID(int ind);
+    bool removeROI(int trkInd);
+    bool removeROIbyID(int objInd);
 
 
-    int track(cv::Mat frame, std::vector <Rect>& bboxes, int frameNum);
+    //int track(cv::Mat frame, std::vector <Rect>& bboxes, int frameNum);
+    int track(std::vector <CObject>& objects, int frameNum);
     int track(cv::Mat frame, std::vector <CObject>& objects, int frameNum);
 
     int updateROIs(std::vector <cv::Rect> yoloBoxes);
@@ -85,12 +89,14 @@ private:
     std::vector <int> m_activesInd; // Inices of active trackers 
 
     std::string m_pathToModel = R"(c:\data\models)";
-    int m_MaxTracker = MAX_TRACKERS;
+    int m_MaxTrackers = MAX_TRACKERS;
     int m_debugLevel = 0;
 
     float m_scale = 1.;
     cv::Mat m_frame;
     int m_frameNum = 0;
+    float m_enlargeBBox = 1.2;
+    bool m_trackeractive = false;
 
 };
 
