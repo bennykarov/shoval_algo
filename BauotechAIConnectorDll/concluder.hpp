@@ -12,9 +12,9 @@ namespace CONCLUDER_CONSTANTS
 	const int MAX_MOTION_PER_FRAME = 20;//  10;
 	const int GOOD_TRACKING_LEN = 20;
 	const int INHERIT_LABEL_LEN  = 30 * 1; //  1 sec
-	const int SAVE_HIDDEN_FRAMES = 2 * 30; // 4;
+	const int KEEP_HIDDEN_FRAMES = 30*2;
+	const int MAX_YOLO_HIDDEN_FRAMES = int(KEEP_HIDDEN_FRAMES/2);
 	const int MAX_SIREN_HIDDEN_FRAMES = 3;
-	const int MAX_YOLO_HIDDEN_FRAMES = 30;
 
 }
 
@@ -60,7 +60,9 @@ public:
 	std::vector <CObject> getSirenObjects(float scale = 1.);
 	std::vector <CObject> getNewSirenObjects(float scale = 1.);
 
-	std::vector <int> getIDStoPrune() { return m_prunedIDs;  }
+	std::vector <int> getIDStoPrune() { return m_pruneObjIDs; }
+	//std::vector <int> getIDStoRenew() { return m_renewObjIDs; }
+	std::vector <CObject> getTrkObjsToRenew();
 
 private:
 	std::vector <int>  findDuplicated(std::vector <cv::Rect> trackerBoxes, std::vector <cv::Rect> yoloBoxes);
@@ -81,7 +83,7 @@ private:
 	//CObject   consolidateObj_(std::vector <CObject> objectList);
 	CObject   consolidateObj(std::vector <CObject> &objectList);
 	int    calcFinalLable(std::vector <CObject> obj);
-	int		  pruneObjects(int hiddenLen);
+	int		  pruneObjects();
 	std::vector <Labels>   getActiveLabels();
 
 private:
@@ -102,7 +104,8 @@ private:
 	cv::Size m_dim;
 	int m_frameNum;
 	int m_debugLevel = 0;
-	std::vector <int> m_prunedIDs; // keep id to prune for Tracker 
+	std::vector <int> m_pruneObjIDs; // keep id to prune for Tracker 
+	std::vector <int> m_TrkToRenewIDs; // Renew (setROI) lost objects for Tracker 
 };
 
 #endif 

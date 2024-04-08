@@ -130,7 +130,7 @@ std::vector <int> CDecipher::removeDuplicated(std::vector <cv::Rect>& trackerOut
 		//bool hasDuplicates = std::adjacent_find(duplicateInds.begin(), duplicateInds.end()) != duplicateInds.end();
 
 		// Remove duplicated obj from tracker output:
-		std::sort(duplicateInds.begin(), duplicateInds.end(), greater<int>());
+		std::sort(duplicateInds.begin(), duplicateInds.end(), greater<int>()); // reverse order 
 		for (auto ind : duplicateInds) {
 			trackerOutput.erase(trackerOutput.begin() + ind);
 		}
@@ -192,6 +192,11 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 	if (!m_active)
 		return std::vector <int>();
 
+	static bool prevWasYolo = false;
+	if (!YoloOutput.empty())
+		prevWasYolo = true;
+
+
 	std::vector <int> matchInds;
 	m_frameNum = frameNum;
 
@@ -208,9 +213,9 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 
 		CObject newObj(Yobj.box, frameNum, 0, DETECT_TYPE::ML, (Labels)Yobj.class_id);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
 
-		int ind = bestMatch(Yobj.box, 0.3, matchInds);
+		float overLappedTreshold = 0.3; // DDEBUG CONST
+		int ind = bestMatch(Yobj.box, overLappedTreshold, matchInds);
 
-		//int ind = bestMatch(Yobj.box, 0.01, matchInds);
 		if (ind >= 0) {
 			newObj.m_ID = m_objects[ind].back().m_ID;
 			m_objects[ind].push_back(newObj);
@@ -222,27 +227,29 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 			m_objects.push_back(std::vector <CObject>());
 			m_objects.back().push_back(newObj);
 		}
-
 	}
 
-	//--------------------------------------------------------
+	//------------------------------------------------------------------------------------------
 	// Add Tracker objects 
-	//----------------------------------------------------
+	//------------------------------------------------------------------------------------------
 
-	// (Tracker-A) First remove tracker boxes  that overlapped with yolo 
-	//-------------------------------------------------------------------
-	std::vector <cv::Rect> trackerOutput;
-	for (auto obj : trackerObjects)
-		trackerOutput.push_back(obj.m_bbox);
-
+	// (Tracker-A) First ignore tracker boxes  that overlapped with yolo (preferred YOLO)
+	//------------------------------------------------------------------------------------------
 	std::vector <int> duplicateInds;
-	if (YoloOutput.size() > 0 && trackerOutput.size() > 0) {
-		duplicateInds = removeDuplicated(trackerOutput, YoloOutput);
-		// Remove duplicated obj from :
-		std::sort(duplicateInds.begin(), duplicateInds.end(), greater<int>());
-		for (auto ind : duplicateInds)
-			trackerObjects.erase(trackerObjects.begin() + ind);
+	if (YoloOutput.size() > 0 && trackerObjects.size() > 0) {
+		std::vector <cv::Rect> trackerOutput;
+		
+		for (auto obj : trackerObjects)
+			trackerOutput.push_back(obj.m_bbox);
 
+		//if (YoloOutput.size() > 0 && trackerOutput.size() > 0) 
+		{
+			duplicateInds = removeDuplicated(trackerOutput, YoloOutput);
+			// remove duplicated :
+			std::sort(duplicateInds.begin(), duplicateInds.end(), greater<int>());
+			for (auto ind : duplicateInds)
+				trackerObjects.erase(trackerObjects.begin() + ind);
+		}
 	}
 
 	// (Tracker-B) Add tracker boxes  
@@ -251,19 +258,58 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 
 	for (auto obj : trackerObjects) {
 		//CObject newObj(obj.m_bbox, frameNum, 0, DETECT_TYPE::Tracking, getYoloClassIndex("giraffe"));  // DDEBUG trkFrame tyep for tracker 
-		CObject newObj(obj.m_bbox, frameNum, 0, DETECT_TYPE::Tracking, obj.m_label);  // DDEBUG trkFrame tyep for tracker 
+		//CObject newObj(obj.m_bbox, frameNum, 0, DETECT_TYPE::Tracking, obj.m_label);  // DDEBUG trkFrame tyep for tracker 
+		CObject newObj = obj;
+		if (1) // DDEBUG 
+			newObj.m_label = getYoloClassIndex("giraffe"); // ddebug mark tracker as giraffe 
 
 		int ind = bestMatch(obj.m_bbox, 0.01, matchInds); // 'frameNum' -> ignore objects currently detected  by YOLO 
 		if (ind >= 0 && m_objects[ind].back().m_frameNum < frameNum) {
+			bool mergeBox = false;
+			if (mergeBox)
+			{
+				// Merge bbox size - using YOLO last detection
+				// Find last yolo box 
+				auto it = find_if(m_objects[ind].rbegin(), m_objects[ind].rend(), [](CObject  obj) { return obj.m_detectionType == DETECT_TYPE::ML; });
+				cv::Rect yoloBox = it->m_bbox;
+
+				// Smoothing bboex over frames 
+				// - give 0.8 of the YOLO size, than alphaBlend with prev one.
+				float AlphaBland = 0.8;
+				// -1- set 80% of the size from Yolo:
+				cv::Rect yoloMergedBox = UTILS::mergeBBoxSize(obj.m_bbox, yoloBox, AlphaBland);
+				// -2- Merge (0.5/0.5) with prev detected box:
+				newObj.m_bbox = UTILS::mergeBBoxes(yoloMergedBox, m_objects[ind].back().m_bbox, 0.5);
+			}
+
 			newObj.m_ID = m_objects[ind].back().m_ID;
+
 			m_objects[ind].push_back(newObj);
 			matchInds.push_back(ind);
 		}
-		else 			
-			int debug = 10;  // already detected by YOLO -OR- a new object (ignore)
+		else {
+				int debug = 10;  // already detected by YOLO -OR- a new object (ignore)
+		}
 	}
 
-	int rem = pruneObjects(CONCLUDER_CONSTANTS::SAVE_HIDDEN_FRAMES);
+
+	// Check that all yolo detections was tracked. 
+	// If not add the untracked it to track list (setROI)
+	if (!trackerObjects.empty() && prevWasYolo) {
+		//checkUntrackedTrkObjects(); // fill the m_TrkToRenewIDs
+		for (int i = 0; i < m_objects.size(); i++) 
+			if (m_objects[i].back().m_detectionType == DETECT_TYPE::ML) {  // Check only fresh YOLO objects 
+				int id = m_objects[i].back().m_ID;
+				auto it = find_if(trackerObjects.begin(), trackerObjects.end(), [id](CObject obj) { return obj.m_ID == id; });
+				if (it == trackerObjects.end()) // objet is missing in Tracker detections
+					m_TrkToRenewIDs.push_back(i);
+			}
+
+		prevWasYolo = false;
+	}
+	// 
+
+	int rem = pruneObjects();
 
 	return duplicateInds;
 
@@ -317,7 +363,7 @@ void CDecipher::add_(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetectio
 	}
 
 
-	int rem = pruneObjects(CONCLUDER_CONSTANTS::SAVE_HIDDEN_FRAMES);
+	int rem = pruneObjects();
 
 }
 
@@ -357,7 +403,7 @@ void CDecipher::add(std::vector <YDetection> YoloOutput, int frameNum)
 	}
 
 
-	int rem = pruneObjects(CONCLUDER_CONSTANTS::SAVE_HIDDEN_FRAMES); // remove "old "old" hidden objects 
+	int rem = pruneObjects(); // remove "old "old" hidden objects 
 }
 #endif 
 
@@ -392,16 +438,16 @@ int CDecipher::bestMatch(cv::Rect box, float OverlappedThrash, std::vector <int>
 				bestInds.push_back(i);
 				bestScores.push_back(overlappingRatio);
 			}
-			else {
-				/*
+		/*
+		else {
 				// DDEBUG INFO 
 				int error;
 				error = overlappingRatio > OverlappedThrash ? 0 : 1;
 				error += similarBox(obj.m_bbox, box, 0.6 * 0.6) ? 0 : 10;
 				error +=  distance(obj.m_bbox, box) < CONCLUDER_CONSTANTS::MAX_MOTION_PER_FRAME ? 0 : 100;
 				int debug = 10;
-				*/
 			}
+		*/
 		}
 	}
 
@@ -437,28 +483,31 @@ int CDecipher::track_old()
 int CDecipher::track(int mode)
 {
 	m_detectedObjects.clear(); // TEMP clearing
-	m_prunedIDs.clear();
+	m_pruneObjIDs.clear();
 
-	for (auto& obj : m_objects)
+	for (auto& obj : m_objects) {
+
+		/*
+		* 
 		//if (obj.back().m_frameNum == m_frameNum)
-		if (getHiddenLen(obj.back()) <= CONCLUDER_CONSTANTS::MAX_SIREN_HIDDEN_FRAMES &&
-			getHiddenLen(obj, DETECT_TYPE::ML) <= 30 * 2) // DDEBUG CONST   
+		//if (getHiddenLen(obj.back()) <= CONCLUDER_CONSTANTS::MAX_SIREN_HIDDEN_FRAMES &&
+		if (getHiddenLen(obj.back()) <= CONCLUDER_CONSTANTS::KEEP_HIDDEN_FRAMES &&
+			getHiddenLen(obj, DETECT_TYPE::ML) <= CONCLUDER_CONSTANTS::MAX_YOLO_HIDDEN_FRAMES) // DDEBUG CONST   
 		{
+		*/
+		if ((obj.back().m_detectionType == DETECT_TYPE::Tracking && obj.back().m_confidance < TRACKER::lowScore) ||
+			getHiddenLen(obj.back()) > CONCLUDER_CONSTANTS::KEEP_HIDDEN_FRAMES ||
+			getHiddenLen(obj, DETECT_TYPE::ML) > CONCLUDER_CONSTANTS::MAX_YOLO_HIDDEN_FRAMES) {
+			// remove object
+			m_pruneObjIDs.push_back(obj.back().m_ID);
+		}
+		else {
 			obj.back().m_age = obj.size(); // update age 
 			m_detectedObjects.push_back(obj.back());
 		}
-		else {
-			if (obj.back().m_ID == 8)
-				int debug = 10;
+	}
 
-			m_prunedIDs.push_back(obj.back().m_ID);
-
-			if (obj.back().m_ID == 5)
-				int debug = 10;
-			if (getHiddenLen(obj, DETECT_TYPE::ML) >= 6 * 3)
-				int debug = 10;
-		}
-	return 0;
+	return m_detectedObjects.size();
 }
 
 
@@ -516,10 +565,9 @@ std::vector <CObject> CDecipher::getBadROITrackerObject(int frameNum)
 
 			// At this point obj BBOX it sagnificantly different 
 			objectsToUpdate.push_back(obj.back());
+
 		}
 	}
-
-	//std::copy_if(m_detectedObjects.begin(), m_detectedObjects.end(), std::back_inserter(badROIObjects),[frameNum](CObject obj) { return obj.m_frameNum == frameNum; && });
 
 	return objectsToUpdate;
 
@@ -781,13 +829,14 @@ inline bool CDecipher::isLarge(std::vector <CObject> obj)
 }
 
 
-
+#if 0
 /*----------------------------------------------------------------
  * Prune objects that are too old (not detected for a long time)
  -----------------------------------------------------------------*/		
 int CDecipher::pruneObjects(int hiddenLen)
 {
 	int orgSize = m_objects.size();
+
 	// Remove un-detected objects (fade)
 	for (int i = 0; i < m_objects.size(); i++) {
 		if (m_frameNum - m_objects[i].back().m_frameNum > hiddenLen) {
@@ -796,19 +845,47 @@ int CDecipher::pruneObjects(int hiddenLen)
 	}
 
 	// Remove tracker long tracking w\o YOLO confirmation:
-#if 0
-	// remove after SIAM tracker  
-		for (int i = 0; i < m_objects.size(); i++) {
-		if (getHiddenLen(m_objects[i], DETECT_TYPE::ML) > CONCLUDER_CONSTANTS::MAX_YOLO_HIDDEN_FRAMES) {
-			//Beep(1000, 50); 
-			std::cout << "prune tracker only lenght for " << int(CONCLUDER_CONSTANTS::MAX_YOLO_HIDDEN_FRAMES) << " frames \n";// DDEBUG DDEBUG DDEBUG DDEBUG 
-			m_objects.erase(m_objects.begin() + i--);
-		}		
-	}
-#endif 
 
 	return orgSize - m_objects.size();
 }
+#endif 
+
+/*----------------------------------------------------------------
+ * Prune objects that are too old (not detected for a long time)
+ -----------------------------------------------------------------*/
+int CDecipher::pruneObjects()
+{
+	if (m_pruneObjIDs.empty())
+		return 0;
+
+	int orgSize = m_objects.size();
+
+	std::vector <int>   prunedInds; // object index (!m_ID)
+
+	// convert  ObjID to vector index:
+	for (auto i : m_pruneObjIDs) {
+		auto it = find_if(m_objects.begin(), m_objects.end(), [i](std::vector <CObject>  obj) { return obj.back().m_ID == i; });
+		if (it != m_objects.end())
+			prunedInds.push_back(std::distance(m_objects.begin(), it));
+	}
+
+	std::sort(prunedInds.begin(), prunedInds.end(), greater<int>()); // reverse order 
+	for (auto ind : prunedInds) {
+		m_objects.erase(m_objects.begin() + ind);
+	}
+#if 0
+	// Remove un-detected objects (fade)
+	for (int i = 0; i < m_objects.size(); i++) {
+		if (m_frameNum - m_objects[i].back().m_frameNum > hiddenLen) {
+			m_objects.erase(m_objects.begin() + i--);
+		}
+	}
+#endif
+	// Remove tracker long tracking w\o YOLO confirmation:
+
+	return orgSize - m_objects.size();
+}
+
 
 
 // return number of person on board (including hidden objects)
@@ -893,3 +970,16 @@ std::vector <Labels>   CDecipher::getActiveLabels()
 
 	return activeLabels;
 }
+
+
+
+std::vector <CObject> CDecipher::getTrkObjsToRenew()
+{
+	std::vector <CObject> objsToRenew;
+	for (int id : m_TrkToRenewIDs)
+		objsToRenew.push_back(m_objects[id].back());
+	
+	return objsToRenew;
+
+}
+
