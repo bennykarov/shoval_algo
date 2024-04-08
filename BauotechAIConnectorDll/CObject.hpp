@@ -88,6 +88,7 @@ public:
 	int				m_frameNum;
 	int				m_moving; // pixel distance
 	int				m_age = 0;
+	float			m_confidance = 0;
 
 private:
 };
