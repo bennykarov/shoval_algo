@@ -12,7 +12,9 @@
 #include "AlgoDetection.hpp"
 #include "algoProcess.hpp"
 #include "files.hpp"
-#include "logger.hpp"
+//#include "logger.hpp"
+#include "CPPLogger.h"
+
 
 #include "loadBalancer.hpp"
 
@@ -61,7 +63,13 @@ API_EXPORT void BauotechAlgoConnector_Init()
 {
 	InitializeCriticalSection(&gCriticalSection);
 
-	LOGGER::init(FILES::OUTPUT_FOLDER_NAME, 1);
+	CPPLogger::getLog().setLogLevel(DEBUG);
+	CPPLogger::getLog().setLogModeFile("/tmp/testlog.log");
+	std::cout << "All Logs\n";
+	LOG(DEBUG) << "Log 1";
+	LOG(INFO) << "Log 2";
+
+	//LOGGER::init(FILES::OUTPUT_FOLDER_NAME, 1);
 
 	g_loadBalancer.setRosourceSemaphore(&g_ResourceSemaphore);
 
@@ -109,13 +117,15 @@ API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, u
 	// Machnism to ignore detection on a frame :
 	if (g_loadBalancer.isActive()) {
 		if (!g_loadBalancer.try_acquire(videoIndex)) {
-			LOGGER::log(std::string("Load balancer REJECT camera " + std::to_string(videoIndex)) + \
+			LOG(DEBUG) << "Load balancer REJECT camera " << std::to_string(videoIndex) << "(P=" << std::to_string((int)g_loadBalancer.getPriority(videoIndex)) << " ; R= " <<  std::to_string(g_ResourceSemaphore.get());
+			//LOGGER::log(std::string("Load balancer REJECT camera " + std::to_string(videoIndex)) + \
 				"(P=" + std::to_string((int)g_loadBalancer.getPriority(videoIndex)) + " ; R= " + std::to_string(g_ResourceSemaphore.get()) + ")");
 			return 0;
 		}
 
-		LOGGER::log(std::string("Load balancer ALLOW camera " + std::to_string(videoIndex)) + \
-			"(P=" + std::to_string((int)g_loadBalancer.getPriority(videoIndex)) + " ; R= " + std::to_string(g_ResourceSemaphore.get()) + ")");
+		LOG(DEBUG) << "Load balancer ALLOW camera " << videoIndex << " (P=" << g_loadBalancer.getPriority(videoIndex) << " ; R= " << g_ResourceSemaphore.get() << ")";
+		LOG(INFO) << "Info logger";
+		LOG(ERROR) << "Info logger";
 	}
 
 	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, (char*)pData));
