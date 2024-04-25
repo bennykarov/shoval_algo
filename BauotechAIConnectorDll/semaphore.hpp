@@ -22,8 +22,9 @@ public:
         return maxCount - count;
     }
 
-    void release(int camID);
-    bool take(int camID);
+    void release();
+    bool take();
+    bool take(int maxWaitToResource);
 
 private:
     std::condition_variable cv;

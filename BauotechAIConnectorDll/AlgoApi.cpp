@@ -71,7 +71,10 @@ API_EXPORT void BauotechAlgoConnector_Init()
 
 	//LOGGER::init(FILES::OUTPUT_FOLDER_NAME, 1);
 
+	// ddebug test load-balancer:
+
 	g_loadBalancer.setRosourceSemaphore(&g_ResourceSemaphore);
+	g_loadBalancer.init(4, 20); // 4 threads, 20 cameras 
 
 	m_initialize = true;
 }
@@ -116,12 +119,14 @@ API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, u
 {
 	// Machnism to ignore detection on a frame :
 	if (g_loadBalancer.isActive()) {
+		/*
 		if (!g_loadBalancer.try_acquire(videoIndex)) {
 			LOG(DEBUG) << "Load balancer REJECT camera " << std::to_string(videoIndex) << "(P=" << std::to_string((int)g_loadBalancer.getPriority(videoIndex)) << " ; R= " <<  std::to_string(g_ResourceSemaphore.get());
 			//LOGGER::log(std::string("Load balancer REJECT camera " + std::to_string(videoIndex)) + \
 				"(P=" + std::to_string((int)g_loadBalancer.getPriority(videoIndex)) + " ; R= " + std::to_string(g_ResourceSemaphore.get()) + ")");
 			return 0;
 		}
+		*/
 
 		LOG(DEBUG) << "Load balancer ALLOW camera " << videoIndex << " (P=" << g_loadBalancer.getPriority(videoIndex) << " ; R= " << g_ResourceSemaphore.get() << ")";
 		LOG(INFO) << "Info logger";
@@ -176,11 +181,15 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 											CameraAICallback callback)
 											
 {
+
+	if (1) // DDEBUG TEST LOAD BALANCER
+		g_loadBalancer.test(4, 20);
+
 	if (g_loadBalancer.isActive())
 		g_algoProcess[videoIndex].setRousceSemaphore(&g_ResourceSemaphore);
 
 
-	g_loadBalancer.set(videoIndex, 0); // set default priority (yet not in used priority)
+	g_loadBalancer.set(videoIndex, 0); // Inint camera, set default priority (yet not in used priority)
 
 		
 	// Init Queue 
