@@ -31,23 +31,57 @@ class CResource {
 	std::chrono::system_clock::time_point   startTime;
 };
 
+class CCycle {
+public:
+    CCycle() {}
+    CCycle(int camID_, int priority_, int detections_, int activeCamera_)
+    {
+        camID = camID_;
+        priority = priority_;
+        detections = detections_;
+        activeCamera = activeCamera_;
+    }
+
+    void reset()
+    {
+        camID = -1;
+        priority = -1;
+        detections = 0;
+        activeCamera = 0;
+        alert = 0;
+        motion = 0;
+    }
+
+    int camID = -1;
+    int priority = -1;
+    int detections = 0;
+    int activeCamera = 0;
+    int alert = 0;
+    int motion = 0;
+    int timeStamp = 0;
+
+};
+
 
 
 #ifdef USE_LOAD_BALANCER
 class CLoadBalaner  {
 public:
-    CLoadBalaner(int reoucesLen = 4, int camerasLen = 10)
+    /*
+    CLoadBalaner()
     {
-        init(reoucesLen, camerasLen);
+        init();
     }
-    void setRosourceSemaphore(CSemaphore *sem) { m_resourceBouncer = sem; }
-    void init(int reoucesLen, int camerasLen);
+    */
+    void init(CSemaphore* sem);
+    int calcPCResource() { return CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;  }
+    //void init(int reoucesLen, int camerasLen);
     //bool try_acquire(int camID);
     int release(int camID, int status);
-    void set(int camID, int proir)
-    {
-        m_priorityQueue.set(camID, proir);
-    }
+    
+    //void initCamera(int videoIndex);
+    void set(int camID, int proir);
+    
     int getPriority(int camID)
     {
         return m_priorityQueue.get_priority2(camID);
@@ -60,11 +94,11 @@ public:
         return max(0, overflow); // 'overflow' can be negative
     }
 
-    int setPriority(int motion, int detections, int alert, int observed);
+    int calcPriority(int motion, int detections, int alert, int observed);
     std::tuple <int, int> getNextCam();
 
 
-    void updateThresholds();
+    void updatePriorThresholds();
     void beat(int cycles = 1) 
     { m_priorityQueue.beat(cycles); }
     
@@ -72,8 +106,13 @@ public:
 
 
     void beatTimer();
-    void test(int reourceNum, int camerasLen); // DDEBUG function 
-    std::tuple<int, int, int> test_run3(int camID, int printPrior, int duration_ms);
+    //void test(int reourceNum, int camerasLen); // DDEBUG function 
+    void test(); // DDEBUG function 
+    void test_async(); // DDEBUG function 
+    std::tuple<int, int, int> test_run3_(int camID, int printPrior, int duration_ms);
+    void test_run3(CCycle& info, int duration_ms);
+    //void test_run4(CCycle info, int duration_ms, int &detections);
+    //void test_run3_async(int camID, int printPrior, int duration_ms, CCycle& info);
 
 
 public:
@@ -82,13 +121,14 @@ public:
 private:
 	void prior();
     int converToQueuePriority(int priority);
+    void setRosourceSemaphore(CSemaphore* sem) { m_resourceBouncer = sem; }
 
 private:
 	std::vector <int>   m_camInProcess; // cameras that are in process
 	better_priority_queue::updatable_priority_queue<int, int> m_priorityQueue;
 
-	int m_reoucesLen = 4;
-	int m_camerasLen = 10;
+	//int m_reoucesLen = 4;
+	int m_camerasLen = 0;
     boost::circular_buffer<std::chrono::system_clock::time_point> m_timestamps;
     std::chrono::system_clock::time_point  m_lastBeat;
     const int TIMESTAMP_LEN = 1000;
@@ -98,7 +138,7 @@ private:
     int m_topPriority = 0;
     int m_thirdPriority = 0;
     int m_2thirdPriority = 0;
-    int m_resourceNum;
+    int m_resourceNum = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
 
     std::thread m_beatthread;
 };

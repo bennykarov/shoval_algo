@@ -71,10 +71,7 @@ API_EXPORT void BauotechAlgoConnector_Init()
 
 	//LOGGER::init(FILES::OUTPUT_FOLDER_NAME, 1);
 
-	// ddebug test load-balancer:
-
-	g_loadBalancer.setRosourceSemaphore(&g_ResourceSemaphore);
-	g_loadBalancer.init(4, 20); // 4 threads, 20 cameras 
+	g_loadBalancer.init(&g_ResourceSemaphore);
 
 	m_initialize = true;
 }
@@ -117,6 +114,7 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int 
  -------------------------------------------------------------------------------------------------------------------*/
 API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber)
 {
+#if 0
 	// Machnism to ignore detection on a frame :
 	if (g_loadBalancer.isActive()) {
 		/*
@@ -132,6 +130,7 @@ API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, u
 		LOG(INFO) << "Info logger";
 		LOG(ERROR) << "Info logger";
 	}
+#endif 
 
 	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, (char*)pData));
 	g_algoProcess[videoIndex].WakeUp();
@@ -182,16 +181,15 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 											
 {
 
-	if (1) // DDEBUG TEST LOAD BALANCER
-		g_loadBalancer.test(4, 20);
+	// DDEBUG TEST LOAD BALANCER	
+	if (1)  
+		//g_loadBalancer.test();
+		g_loadBalancer.test_async();
 
-	if (g_loadBalancer.isActive())
-		g_algoProcess[videoIndex].setRousceSemaphore(&g_ResourceSemaphore);
+	// LOAD BALANCER
+	//----------------
+	g_loadBalancer.set(videoIndex, 0 /* !!! should be  : topP{rior()*/); // Inint camera, set default priority (yet not in used priority)
 
-
-	g_loadBalancer.set(videoIndex, 0); // Inint camera, set default priority (yet not in used priority)
-
-		
 	// Init Queue 
 	int bufSize = 3;
 	g_bufQ[(int)videoIndex].set(width, height, pixelWidth, bufSize);
