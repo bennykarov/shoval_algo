@@ -24,18 +24,18 @@ static std::shared_mutex mtx;
         return true;
     }
 
-    bool CSemaphore::take(int maxWaitToResourceSec) 
+    bool CSemaphore::take(int waitToResourceSec)
     {
-        int maxWaitToResource = maxWaitToResourceSec / 5;
-        int waitedToResource = 0;
-        while (!take() && waitedToResource < maxWaitToResource ) {
-            Sleep(5);
-            waitedToResource++;
+        if (take())
+            return true;
+
+        if (waitToResourceSec > 0) {
+                Sleep(waitToResourceSec);
+                if (take())
+                    return true;
         }
 
-        if (waitedToResource < maxWaitToResource )
-            return true;
-        else
-            return false;
+		return false;
     }
+
 

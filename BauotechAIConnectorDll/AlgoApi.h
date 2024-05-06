@@ -100,17 +100,19 @@ extern "C" {
 		CameraAICallback callback);
 
 	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber);
+	API_EXPORT int BauotechAlgoConnector_Run4(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber);
 	API_EXPORT int BauotechAlgoConnector_Run3_sync(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA* AIObjects, uint64_t frameNumber);
-	API_EXPORT int BauotechAlgoConnector_Run3_try(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA* AIObjects, uint64_t frameNumber);
 
 	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
 
 
-	API_EXPORT void BauotechAlgoConnector_Init();
+	API_EXPORT void BauotechAlgoConnector_Init(bool loadBalance);
 	API_EXPORT void BauotechAlgoConnector_Release();
 
  
 	API_EXPORT void BauotechAlgoConnector_SetCameraRequestCallback(CameraRequestCallback callback);
+	API_EXPORT void BauotechAlgoConnector_SetCameraType(uint32_t videoIndex, uint32_t type);
+
 	API_EXPORT void AlgoSetTime(int hour, int min, int sec);
 
 	 

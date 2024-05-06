@@ -49,6 +49,7 @@ void CAlgoProcess::makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowe
 
 CAlgoProcess::~CAlgoProcess()
 {
+
 	LOGGER::close();
 }
 
@@ -115,27 +116,57 @@ CAlgoProcess::~CAlgoProcess()
 	}
 
 
+
+
+	std::vector <int> CAlgoProcess::addMultiPolygons(std::string DetectionTypeList)
+	{
+		std::vector <int> labels;
+		for (auto& ch : DetectionTypeList)
+		{
+			if (ch == ',')
+				ch = ' ';
+		}
+
+		// use std::istringstream to parse the new string
+		std::istringstream strm(DetectionTypeList);
+		std::string aLabel;
+		while (strm >> aLabel)
+			labels.push_back(getYoloClassIndex(aLabel));
+
+		return labels;
+
+	}
 	/*----------------------------------------------------------------------------------------------------------------------------------
 	* API - add polygon before call to polygonInit()
 	----------------------------------------------------------------------------------------------------------------------------------*/
 	void CAlgoProcess::addPolygon(int CamID, int polygonId, char* DetectionType, int MaxAllowed, int Polygon[], int polygonSize)
 	{
 		std::vector<cv::Point> contour;
+		std::vector <int> labels;
+		std::string DetectionTypeStr(DetectionType);
+
+		if (DetectionTypeStr.find(',') != std::string::npos)
+			labels = addMultiPolygons(DetectionTypeStr);
+		else
+			labels.push_back(getYoloClassIndex(DetectionType));
+
+		//int label = getYoloClassIndex(DetectionType);
+
+		for (auto label : labels) {
+			contour.clear();
+
+			if (label < 0)
+				LOGGER::log(*DetectionType + "Bad DetectionType in addPolygon");
 
 
-		int label = getYoloClassIndex(DetectionType);
+			for (int i = 0; i < polygonSize; i += 2)
+				contour.push_back(cv::Point(Polygon[i], Polygon[i + 1]));
 
-		if (label < 0)
-			LOGGER::log(*DetectionType + "Bad DetectionType in addPolygon");
-
-
-		for (int i = 0; i < polygonSize; i += 2)
-			contour.push_back(cv::Point(Polygon[i], Polygon[i + 1]));
-
-		if (label == VEHICLE_CLASS_ID) 
-			makeVehicleInfo(contour, MaxAllowed, polygonId);
-		else 
-			m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, polygonId));
+			if (label == VEHICLE_CLASS_ID)
+				makeVehicleInfo(contour, MaxAllowed, polygonId); // push multiple "vehicle" classes 
+			else
+				m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, polygonId));
+		}
 	}
 
 	void CAlgoProcess::polygonClear()
@@ -149,22 +180,18 @@ CAlgoProcess::~CAlgoProcess()
 	}
 
 
+
+
+
 	/*---------------------------------------------------------------------
-	* Start the algo thread
-	 ---------------------------------------------------------------------*/
-	int CAlgoProcess::run(TSBuffQueue* bufQ)
-	{
-		m_thread = std::thread(&CAlgoProcess::run_th, this, bufQ);
-
-		std::cout << "GPU warmup for half second.... \n";
-		Sleep(500); // DDEBBUG let CUDA and GPU init
-
-		return m_thread.joinable();
-	}
-
-
+	* Start algo thread 
+	* input: (1) buffer queue  (2) load balancer class 
+	----------------------------------------------------------------------*/
 	int CAlgoProcess::run(TSBuffQueue* bufQ, CLoadBalaner *loader)
 	{
+
+		//m_loaderResQueuePtr = loader->getResQueuePtr();
+
 		m_thread = std::thread(&CAlgoProcess::run_th2, this, bufQ, loader);
 
 		std::cout << "GPU warmup for half second.... \n";
@@ -174,108 +201,13 @@ CAlgoProcess::~CAlgoProcess()
 	}
 
 
-
-
-	/*----------------------------------------------------------------------------------------------------
-	* Process thread (main loop) : Fetching frame from the queue , process frame and send to callback
-	* Run the m_tracker.process() and fills the 'm_Objects' objects 
-	  ---------------------------------------------------------------------------------------------------*/
-	int CAlgoProcess::run_th(TSBuffQueue* bufQ)
-	{
-		CframeBuffer frameBuff;
-		long frameCount = 0;
-		float elapsedSum = 0;
-		float elapsedMin = 999999;
-		float elapsedMax = 0;
-
-		while (m_terminate == false) 
-		{
-			if (bufQ->front(frameBuff) == false)
-			{
-				Sleep(10);
-				continue;
-			}
-			break;				
-		}
-
-		while (!m_terminate) 
-		{
-			if (bufQ->IsEmpty())  {
-				//std::cout << "< before m_event.Wait()";
-				m_event.Wait();
-				//std::cout << "> after m_event.Wait()";
-			}
-			if (bufQ->pop(frameBuff) == false) {
-				continue;
-			}
-			
-			if (1)
-				if (m_frameNum == frameBuff.frameNum)
-				{
-					//>>std::cout << "m_frameNum == frameBuff.frameNum  \n";
-					Beep(1200, 10); // Sleep(5);
-					//bufQ->pop(); // release buffer
-					continue;
-				}
-
-			m_frameNum = frameBuff.frameNum;
-
-
-			m_timer.sample();
-
-			// m_objectCount = m_tracker.process((void*)frameBuff.ptr, m_Objects);
-			cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
-			m_objectCount = m_tracker.process(frameBGR, m_Objects);
-
-			float elapsed = m_timer.sample();
-
-			//if (m_frameNum % 60 == 0)    std::cout << "Algo duration: " << elapsed << " milliseconds" << std::endl;
-
-			// DDEBUG : for getbjectData() API  
-			//---------------------------------------
-			bool supportGetbjectData = true; // DDEBUG
-			if (supportGetbjectData) {
- 				std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);
-				m_pObjectsAPI.clear();
-				for (int i = 0; i < m_objectCount; i++)
-					m_pObjectsAPI.push_back(m_Objects[i]); 
-			}
-			 
-
-			int i = 0;
-			for (;i < m_objectCount; i++)
-				m_Objects[i].frameNum = m_frameNum;
-			for (;i < MAX_OBJECTS; i++)
-				m_Objects[i].frameNum = -1;
-
-
-			// send the data to the callback
-			if (m_callback != nullptr && m_objectCount > 0)
-			{
-				m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
-			}
-
-			if (m_resourceSemaphore != nullptr)
-				m_resourceSemaphore->release(m_videoIndex); // release resource for Load Balancer
-
-			frameCount++;
-		} // while !terminate
-
-
-		// termination()...
-		//Sleep(20); // DDEBUG DDEBUG 
-
-		return m_frameNum > 0;
-
-	}
-
-
-
-	/*----------------------------------------------------------------------------------------------------
-* Process thread (main loop) : Fetching frame from the queue , process frame and send to callback
-* Run the m_tracker.process() and fills the 'm_Objects' objects
+/*----------------------------------------------------------------------------------------------------
+* Process thread (main loop) : Fetching frame from the Queue , process frame and send the result to...: 
+	(1) to server callback
+	(2) loadBalamcer thread (via load balancer 'ResQueue' )
+*	Run the m_tracker.process() and fills the 'm_Objects' objects
   ---------------------------------------------------------------------------------------------------*/
-	int CAlgoProcess::run_th2(TSBuffQueue* bufQ , CLoadBalaner* loader)
+	int CAlgoProcess::run_th2(TSBuffQueue* bufQ, CLoadBalaner* loader)
 	{
 		CframeBuffer frameBuff;
 		long frameCount = 0;
@@ -309,7 +241,7 @@ CAlgoProcess::~CAlgoProcess()
 				if (m_frameNum == frameBuff.frameNum)
 				{
 					//>>std::cout << "m_frameNum == frameBuff.frameNum  \n";
-					Beep(1200, 10); // Sleep(5);
+					Beep(1200, 10); 
 					//bufQ->pop(); // release buffer
 					continue;
 				}
@@ -347,15 +279,18 @@ CAlgoProcess::~CAlgoProcess()
 
 
 			// DDEBUG DDEBUG DISPLAY ================================================================================================================
-			if (m_youDraw) { 
+			if (m_youDraw) {
 				float displayScale = 0.5;
-				int key = draw(m_height, m_width, frameBuff.ptr, m_pObjectsAPI, std::vector <CAlert_>(), m_frameNum);				
+				int key = draw(m_height, m_width, frameBuff.ptr, m_pObjectsAPI, std::vector <CAlert_>(), m_frameNum);
 				cv::imshow("DLL draw", frameBGR);
 				cv::waitKey(1);
 			}
 			//=======================================================================================================================================
+			// POST PROCESS AREA:
+			//=======================================================================================================================================
 
-			// send the data to the callback
+			// -1- send the data to the server callback
+			//---------------------------------------
 			if (m_callback != nullptr && m_objectCount > 0)
 			{
 				if (m_objectCount > 2)
@@ -365,8 +300,22 @@ CAlgoProcess::~CAlgoProcess()
 				m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
 			}
 
-			if (m_resourceSemaphore != nullptr)
-				m_resourceSemaphore->release(m_videoIndex); // release resource for Load Balancer
+
+			//---------------------------------------------------------------------------------------
+			// -2- send the data to the load balancer priorityTH thread (via thread safe 'ResQueue')
+			//---------------------------------------------------------------------------------------
+			//if (m_objectCount > 0)
+			{
+				CCycle info;
+				info.detections = m_objectCount;
+				info.alert = 0;
+				info.camID = m_videoIndex;
+				info.activeCamera = 0;
+				info.motion = m_objectCount > 0 ? 1 : 0;
+				info.timeStamp = m_frameNum; // DDEBUG 
+				loader->getResQueuePtr()->push(info);
+				loader->getResCondVPtr()->notify_one();
+			}
 
 			frameCount++;
 		} // while !terminate
@@ -466,3 +415,116 @@ CAlgoProcess::~CAlgoProcess()
 			m_thread.join();
 		return true;
 	}
+
+
+#if 0
+	/*---------------------------------------------------------------------
+	* Start the algo thread
+	 ---------------------------------------------------------------------*/
+	int CAlgoProcess::run(TSBuffQueue* bufQ)
+	{
+		m_thread = std::thread(&CAlgoProcess::run_th, this, bufQ);
+
+		std::cout << "GPU warmup for half second.... \n";
+		Sleep(500); // DDEBBUG let CUDA and GPU init
+
+		return m_thread.joinable();
+	}
+
+
+	/*----------------------------------------------------------------------------------------------------
+	* Process thread (main loop) : Fetching frame from the queue , process frame and send to callback
+	* Run the m_tracker.process() and fills the 'm_Objects' objects
+	  ---------------------------------------------------------------------------------------------------*/
+	int CAlgoProcess::run_th(TSBuffQueue* bufQ)
+	{
+		CframeBuffer frameBuff;
+		long frameCount = 0;
+		float elapsedSum = 0;
+		float elapsedMin = 999999;
+		float elapsedMax = 0;
+
+		while (m_terminate == false)
+		{
+			if (bufQ->front(frameBuff) == false)
+			{
+				Sleep(10);
+				continue;
+			}
+			break;
+		}
+
+		while (!m_terminate)
+		{
+			if (bufQ->IsEmpty()) {
+				//std::cout << "< before m_event.Wait()";
+				m_event.Wait();
+				//std::cout << "> after m_event.Wait()";
+			}
+			if (bufQ->pop(frameBuff) == false) {
+				continue;
+			}
+
+			if (1)
+				if (m_frameNum == frameBuff.frameNum)
+				{
+					//>>std::cout << "m_frameNum == frameBuff.frameNum  \n";
+					Beep(1200, 10); // Sleep(5);
+					//bufQ->pop(); // release buffer
+					continue;
+				}
+
+			m_frameNum = frameBuff.frameNum;
+
+
+			m_timer.sample();
+
+			cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
+			m_objectCount = m_tracker.process(frameBGR, m_Objects);
+
+			float elapsed = m_timer.sample();
+
+			//if (m_frameNum % 60 == 0)    std::cout << "Algo duration: " << elapsed << " milliseconds" << std::endl;
+
+			// DDEBUG : for getbjectData() API  
+			//---------------------------------------
+			bool supportGetbjectData = true; // DDEBUG
+			if (supportGetbjectData) {
+				std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);
+				m_pObjectsAPI.clear();
+				for (int i = 0; i < m_objectCount; i++)
+					m_pObjectsAPI.push_back(m_Objects[i]);
+			}
+
+
+			int i = 0;
+			for (; i < m_objectCount; i++)
+				m_Objects[i].frameNum = m_frameNum;
+			for (; i < MAX_OBJECTS; i++)
+				m_Objects[i].frameNum = -1;
+
+
+			// send the data to the callback
+			if (m_callback != nullptr && m_objectCount > 0)
+			{
+				m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
+			}
+
+			if (m_resourceSemaphore != nullptr)
+				m_resourceSemaphore->release(); // release resource for Load Balancer
+
+			frameCount++;
+		} // while !terminate
+
+
+		// termination()...
+		//Sleep(20); // DDEBUG DDEBUG 
+
+		return m_frameNum > 0;
+
+	}
+
+
+
+
+#endif 

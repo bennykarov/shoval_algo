@@ -19,7 +19,7 @@ class CAlgoProcess {
 public:
 	~CAlgoProcess();
 	bool init(int video_index, int width, int height, int image_size, int pixelWidth);
-	void setRousceSemaphore(CSemaphore *sema) {m_resourceSemaphore = sema;}
+	//void setRousceSemaphore(CSemaphore *sema) {m_resourceSemaphore = sema;}
 	void addPolygon(int CamID, int polygonId, char* DetectionType, int MaxAllowed, int Polygon[], int polygonSize);
 	void polygonClear();
 	void initPolygons();
@@ -35,17 +35,22 @@ public:
 	/*---------------------------------------------------------------------
 	* Process thread: Fetching frame from the queue , process frame and send to callback
 	  ---------------------------------------------------------------------*/
+	int run(TSBuffQueue* bufQ, CLoadBalaner* loader);
+	int run(TSBuffQueue* bufQ, AutoResetNumericEvent* camRes) { return 0; } // DDEBUG 
+	int run_sync(void* pData, int frameNum, ALGO_DETECTION_OBJECT_DATA* AIobjects);
+	int run_th2(TSBuffQueue* bufQ, CLoadBalaner* loader);
+
+	/*
 	int run(TSBuffQueue* bufQ);
 	int run_th(TSBuffQueue* bufQ);
-	int run(TSBuffQueue* bufQ, CLoadBalaner* loader);
-	int run_th2(TSBuffQueue* bufQ, CLoadBalaner* loader);
-	int run_sync(void* pData, int frameNum, ALGO_DETECTION_OBJECT_DATA* AIobjects);
-	// getters
+	//int run(TSBuffQueue* bufQ, );
+	*/
 
 	void WakeUp();
 
 private:
 	void makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int polygonId);
+	std::vector <int> addMultiPolygons(std::string DetectionTypeList);
 
 
 private:
@@ -78,4 +83,7 @@ private:
 	CSemaphore *m_resourceSemaphore=nullptr;
 
 	CTimer m_timer;
+
+	std::queue<CCycle>         *m_loaderResQueuePtr; // loader queue for resource 
+
 };

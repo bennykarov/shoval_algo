@@ -19,12 +19,15 @@
 #include "loadBalancer.hpp"
 
 
+
+
 typedef struct tagRGB32TRIPLE {
 	BYTE    rgbtBlue;
 	BYTE    rgbtGreen;
 	BYTE    rgbtRed;
 	BYTE    rgb0;
 } RGB32TRIPLE;
+
 
 
 
@@ -35,20 +38,17 @@ typedef struct tagRGB32TRIPLE {
 // Define a global critical section
 CRITICAL_SECTION gCriticalSection;
 bool m_initialize = false;
-CameraRequestCallback gCameraRequestCallback = nullptr; // moved from header file
+//CameraRequestCallback gCameraRequestCallback = nullptr; // moved from header file
 
 std::unordered_map<uint32_t, CameraAICallback> gAICllbacks;
 
-
-/*
-static std::shared_ptr<CSemaphore> g_ResourceSemaphore = std::make_shared<CSemaphore>();
-static std::shared_ptr<CLoadBalaner> g_loadBalancer = std::make_shared<CLoadBalaner>();
-*/
-
 CLoadBalaner  g_loadBalancer;
-CSemaphore  g_ResourceSemaphore;
+//CSemaphore  g_ResourceSemaphore;
 CAlgoProcess   g_algoProcess[MAX_VIDEOS];
 TSBuffQueue g_bufQ[MAX_VIDEOS];
+
+AutoResetNumericEvent cameraRes[MAX_VIDEOS];
+
 //--------------------------------------------------------------------------------------------------------
 
 
@@ -59,7 +59,7 @@ API_EXPORT void AlgoSetTime(int hour, int min, int sec)
 
 }
  
-API_EXPORT void BauotechAlgoConnector_Init()
+API_EXPORT void BauotechAlgoConnector_Init(bool loadBalance)
 {
 	InitializeCriticalSection(&gCriticalSection);
 
@@ -69,9 +69,12 @@ API_EXPORT void BauotechAlgoConnector_Init()
 	LOG(DEBUG) << "Log 1";
 	LOG(INFO) << "Log 2";
 
-	//LOGGER::init(FILES::OUTPUT_FOLDER_NAME, 1);
+	
+	if (0)   // DDEBUG TEST LOAD BALANCER	
+		g_loadBalancer.test_async();
 
-	g_loadBalancer.init(&g_ResourceSemaphore);
+	if (loadBalance)
+		g_loadBalancer.init();
 
 	m_initialize = true;
 }
@@ -114,23 +117,25 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int 
  -------------------------------------------------------------------------------------------------------------------*/
 API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber)
 {
-#if 0
-	// Machnism to ignore detection on a frame :
-	if (g_loadBalancer.isActive()) {
-		/*
-		if (!g_loadBalancer.try_acquire(videoIndex)) {
-			LOG(DEBUG) << "Load balancer REJECT camera " << std::to_string(videoIndex) << "(P=" << std::to_string((int)g_loadBalancer.getPriority(videoIndex)) << " ; R= " <<  std::to_string(g_ResourceSemaphore.get());
-			//LOGGER::log(std::string("Load balancer REJECT camera " + std::to_string(videoIndex)) + \
-				"(P=" + std::to_string((int)g_loadBalancer.getPriority(videoIndex)) + " ; R= " + std::to_string(g_ResourceSemaphore.get()) + ")");
-			return 0;
-		}
-		*/
 
-		LOG(DEBUG) << "Load balancer ALLOW camera " << videoIndex << " (P=" << g_loadBalancer.getPriority(videoIndex) << " ; R= " << g_ResourceSemaphore.get() << ")";
-		LOG(INFO) << "Info logger";
-		LOG(ERROR) << "Info logger";
-	}
-#endif 
+	if (!g_loadBalancer.acquire(videoIndex))
+		return 0;
+
+	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, (char*)pData));
+	g_algoProcess[videoIndex].WakeUp();
+
+	return ok ? 1 : 0;
+
+}
+
+/*-------------------------------------------------------------------------------------------------------------------
+*  runner use the TSBuffQeue buffering
+ -------------------------------------------------------------------------------------------------------------------*/
+API_EXPORT int BauotechAlgoConnector_Run4(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber)
+{
+
+	if (!g_loadBalancer.acquire(videoIndex))
+		return 0;
 
 	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, (char*)pData));
 	g_algoProcess[videoIndex].WakeUp();
@@ -181,14 +186,10 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 											
 {
 
-	// DDEBUG TEST LOAD BALANCER	
-	if (1)  
-		//g_loadBalancer.test();
-		g_loadBalancer.test_async();
-
 	// LOAD BALANCER
 	//----------------
-	g_loadBalancer.set(videoIndex, 0 /* !!! should be  : topP{rior()*/); // Inint camera, set default priority (yet not in used priority)
+	//g_loadBalancer.set(videoIndex, 0); 
+	g_loadBalancer.initCamera(videoIndex); 
 
 	// Init Queue 
 	int bufSize = 3;
@@ -204,6 +205,7 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 
 	// Run Algo thread
 	g_algoProcess[videoIndex].run(&g_bufQ[(int)videoIndex], &g_loadBalancer);
+	//g_algoProcess[videoIndex].run(&g_bufQ[(int)videoIndex], &cameraRes[(int)videoIndex]);
 	return 1;
 }
  
@@ -223,16 +225,19 @@ API_EXPORT int BauotechAlgoConnector_Config_sync(uint32_t videoIndex,
 	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth))
 		return -1;
 
-	// Run Algo thread
-	//g_algoProcess[videoIndex].run(&g_bufQ);
 	return 1;
 }
 
 
 API_EXPORT void BauotechAlgoConnector_SetCameraRequestCallback(CameraRequestCallback callback)
 {
-	gCameraRequestCallback = callback;
+	//gCameraRequestCallback = callback;
+	g_loadBalancer.SetCameraRequestCallback(callback);
 }
 
+API_EXPORT void BauotechAlgoConnector_SetCameraType(uint32_t videoIndex, uint32_t type)
+{
+	g_loadBalancer.SetCameraType(videoIndex, type);
+}
 
 

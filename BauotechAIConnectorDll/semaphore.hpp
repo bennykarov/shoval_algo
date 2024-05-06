@@ -6,11 +6,6 @@
 
 class CSemaphore {
 public:
-    /*CSemaphore(int maxCount_)
-        : maxCount(maxCount_)
-    {
-    }
-    */
 
     inline void set(int maxCount_)
     {
