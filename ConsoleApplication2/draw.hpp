@@ -37,6 +37,6 @@ public:
 };
 
 
-int draw(int height, int width, char* pData, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, std::vector <CAlert_> g_cameraInfos, int framenum, float scale_ = 0.7);
+int draw(int height, int width, char* pData, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, std::vector <CAlert> g_cameraInfos, int framenum, float scale_, bool invertImg);
 void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale);
 
