@@ -40,10 +40,9 @@ enum STAGE {
 class CDetector {
 public:
 	// init
-	bool init(int camIndex, int w, int h, int imgSize, int pixelWidth, float scaleDisplay = 0.5);
+	bool init(int camIndex, int w, int h, int imgSize, int pixelWidth, int invertImage, float scaleDisplay = 0.5);
 	bool InitGPU();
-	void setCamerasInfo(std::vector <CAlert> camerasInfo)   
-	{  m_camerasInfo = camerasInfo; }
+	void setCamerasInfo(std::vector <CAlert> camerasInfo);
 	
 	// Process
 	int process(void* dataTemp, ALGO_DETECTION_OBJECT_DATA* pObjects);
@@ -94,6 +93,7 @@ private:
 	CDecipher m_decipher;
 	std::vector <CAlert> m_camerasInfo;
 	int m_cameraIndex = 0;
+	int m_invertImg = 0;
 	std::vector <Labels> m_detectionTypes; // store all types for detections 
 
 private:

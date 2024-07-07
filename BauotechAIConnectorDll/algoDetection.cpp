@@ -4,6 +4,8 @@
 #include <chrono>
 #include  <numeric>
 
+#include <cuda_runtime.h>
+
 
 #include "opencv2/opencv.hpp"
 #include "opencv2/core/core.hpp"
@@ -56,6 +58,7 @@
 #pragma comment(lib, "opencv_bgsegm470d.lib")
 #ifdef USE_CUDA
 #pragma comment(lib, "opencv_cudabgsegm470d.lib")
+//#pragma comment(lib, "cuda.lib")
 #endif
 #else
 #pragma comment(lib, "opencv_core470.lib")
@@ -97,6 +100,9 @@ void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA* pObjects)
 	pObjects->Height = cObject.m_bbox.height;
 
 	pObjects->ObjectType = (int)cObject.m_label;
+
+	pObjects->DetectionPercentage = cObject.m_moving > 0 ? 0 : 9999; // DDEBUG DDEBUG mark static as 9999  under 'DetectionPercentage'
+
 }
 
 
@@ -134,14 +140,16 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 	//conf.showTruck = pt.get<int>("GENERAL.showTruck", conf.showTruck);
 	conf.showMotion = pt.get<int>("GENERAL.showMotion", conf.showMotion);
 	conf.camROI = to_array<int>(pt.get<std::string>("GENERAL.camROI", "0,0,0,0"));
-	// [OPTIMIZE]  Optimization
+	
+
+		//---------
+		// ALGO:
+		//---------
+		// [OPTIMIZE]  Optimization
 	conf.skipMotionFrames = pt.get<int>("ALGO.stepMotion", conf.skipMotionFrames);
 	conf.skipDetectionFrames = pt.get<int>("ALGO.stepDetection", conf.skipDetectionFrames);
 	conf.skipDetectionFramesInMotion = pt.get<int>("ALGO.stepDetectionInMotion", conf.skipDetectionFramesInMotion);
 	conf.skipDetectionFramesInMotion = pt.get<int>("ALGO.stepTracking", conf.skipDetectionFramesInMotion);
-	//---------
-	// ALGO:
-	//---------
 	std::vector <int> motionROI_vec = to_array<int>(pt.get<std::string>("ALGO.motionROI", "0,0,0,0"));
 	if (motionROI_vec[2] > 0) // width
 		conf.motionROI = cv::Rect(motionROI_vec[0], motionROI_vec[1], motionROI_vec[2], motionROI_vec[3]);
@@ -184,16 +192,16 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 		return counter;
 	}
 
+#ifdef USE_CUDA
 	int checkForGPUs()
 	{
-#ifdef USE_CUDA
 
 		using namespace cv::cuda;
 
 		std::cout << "--------------------------";
 		std::cout << "GPU INFO : ";
 		printShortCudaDeviceInfo(getDevice());
-		int cuda_devices_number = getCudaEnabledDeviceCount();
+		int cuda_devices_number = cv::cuda::getCudaEnabledDeviceCount();
 		cout << "CUDA Device(s) Number: " << cuda_devices_number << endl;
 		
 		DeviceInfo _deviceInfo;
@@ -201,13 +209,26 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 		cout << "CUDA Device(s) Compatible: " << _isd_evice_compatible << endl;
 		std::cout << "--------------------------";
 		return cuda_devices_number;
-#else
 		return 0;
-#endif 
 	}
 
+	/*
+	size_t GetGraphicDeviceVRamUsage(int _NumGPU)
+	{
+		//cudaSetDevice(_NumGPU);
 
+		size_t l_free = 0;
+		size_t l_Total = 0;
+		cudaError_t error_id = cudaMemGetInfo(&l_free, &l_Total);
 
+		return (l_Total - l_free);
+	}
+	*/
+
+#else
+	int checkForGPUs() { return 0; }
+	size_t GetGraphicDeviceVRamUsage(int _NumGPU) { return size_t(0); }
+#endif 
 	void debugSaveParams(int w, int h, int imgSize, int pixelWidth, float scaleDisplay, Config params)
 	{
 		std::ofstream debugFile("c:\\tmp\\algoapi.txt");
@@ -228,6 +249,12 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 /*---------------------------------------------------------------------------------------------
  *						D E T E C T O R       C L A S S  
  *--------------------------------------------------------------------------------------------*/
+
+void CDetector::setCamerasInfo(std::vector <CAlert> camerasInfo)
+{  
+	m_camerasInfo = camerasInfo; 
+}
+
 bool CDetector::InitGPU()
 {
 
@@ -241,18 +268,19 @@ bool CDetector::InitGPU()
 }
 
 
-bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, float scaleDisplay)
+bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, int invertImage, float scaleDisplay)
 {
 	m_width = w;
 	m_height = h;
 	m_colorDepth = imgSize / (w * h);
 	m_cameraIndex = camIndex;
+	m_invertImg = invertImage;
 
 	m_colorDepth = pixelWidth; // in Byte unit / 8;
 
 
 	setConfigDefault(m_params);
-	readConfigFile(FILES::CONFIG_FILE_NAME, m_params);
+	FILE_UTILS::readConfigFile(FILES::CONFIG_FILE_NAME, m_params);
 	debugSaveParams(w, h, imgSize, pixelWidth, scaleDisplay, m_params);
 
 	if (m_params.useGPU == 0)
@@ -330,7 +358,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 		if (m_params.trackerType > -1)
 			m_tracker.init(m_params.useGPU, TRACKER::scale, debugLevel); //siam tracker 
 		
-		m_decipher.init(m_params.debugLevel);
+		m_decipher.init(cv::Size(m_width, m_height), m_params.debugLevel);
 		m_decipher.setPersonDim(MAX_PERSON_DIM); // DDEBUG CONST
 
 
@@ -359,9 +387,10 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		cv::Mat frame = frame_;
 
+		/*
 		cv::Mat trkFrame;
 		trkFrame = m_frame;
-
+		*/
 
 
 		// BG seg detection
@@ -390,6 +419,9 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 			m_yolo.detect(frame, m_Yolotput);
 		}
 
+		for (auto obj : m_Yolotput)
+			if (obj.class_id == 2)
+				int debug = 10;
 
 		// Track:
 		//-------------------
@@ -418,6 +450,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 			std::vector debugIDs = m_decipher.getIDStoPrune();
 			if (!debugIDs.empty())
 				m_tracker.prune(debugIDs);
+
 			m_tracker.setROIs(m_decipher.getTrkObjsToRenew());
 		}
 		//-------------------------------------------------------------
@@ -477,11 +510,13 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 	{
 		std::vector <CObject>	sirenObjs;
 
-
-		//pObjects->frameNum = m_frameNum;
 		pObjects->ObjectType = -1;
 
-		m_frameOrg = frameRaw; // ?? 
+		if (m_invertImg == 1)
+			cv::flip(frameRaw, m_frameOrg, 0);
+		else 
+			m_frameOrg = frameRaw; 
+
 
 		m_frameROI = m_frameOrg(m_camROI);
 
@@ -494,7 +529,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 
 		if (m_decipher.getObjects().size() > 0) {
 
-			sirenObjs = m_decipher.getSirenObjects(1.);
+			sirenObjs = m_decipher.getSirenObjects(1., &m_frame);
 
 			// scale back to original image size:
 			for (auto& obj : sirenObjs) {
@@ -536,7 +571,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, fl
 		int objects_tracked = processFrame(m_frame);
 
 		if (m_decipher.getObjects().size() > 0) {
-			sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale);
+			sirenObjs = m_decipher.getSirenObjects(1. / m_params.scale, &m_frame);
 
 
 			//if (sirenObjs.size() > 0) 
