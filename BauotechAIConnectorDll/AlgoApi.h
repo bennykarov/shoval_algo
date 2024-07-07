@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 
-#define MAX_VIDEOS     30
+#define MAX_VIDEOS     101
 
 #pragma pack(push, 1) 
 typedef struct ALGO_DETECTION_OBJECT_DATA
@@ -16,7 +16,7 @@ typedef struct ALGO_DETECTION_OBJECT_DATA
 	int Width;
 	int Height;
 	int CountUpTime;
-	int ObjectType; // optional
+	int ObjectType; // optional	
 	int DetectionPercentage;// optional
 	int frameNum;
 	int ID;
@@ -66,6 +66,8 @@ extern "C" {
 #endif
  
 	 
+	API_EXPORT void Crash();
+
 	API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 		BAUOTECH_AND_BENNY_KAROV_ALGO algo,
 		uint32_t width,
@@ -73,6 +75,7 @@ extern "C" {
 		uint32_t pixelWidth,
 		uint32_t image_size,
 		uint8_t youDraw,
+		uint8_t invertImage,
 		CameraAICallback callback);
 	 
 	API_EXPORT int BauotechAlgoConnector_AddPolygon(uint32_t videoIndex,	 
@@ -97,10 +100,10 @@ extern "C" {
 		uint32_t pixelWidth,
 		uint32_t image_size,
 		uint8_t youDraw,
+		uint8_t invertImage,
 		CameraAICallback callback);
 
 	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber);
-	API_EXPORT int BauotechAlgoConnector_Run4(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber);
 	API_EXPORT int BauotechAlgoConnector_Run3_sync(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA* AIObjects, uint64_t frameNumber);
 
 	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
