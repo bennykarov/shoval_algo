@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 
-#define MAX_VIDEOS     20
+#define MAX_VIDEOS     30
 
 #pragma pack(push, 1) 
 typedef struct ALGO_DETECTION_OBJECT_DATA
@@ -106,8 +106,9 @@ extern "C" {
 	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
 
 
-	API_EXPORT void BauotechAlgoConnector_Init(bool loadBalance);
+	API_EXPORT void BauotechAlgoConnector_Init();
 	API_EXPORT void BauotechAlgoConnector_Release();
+	API_EXPORT void BauotechAlgoConnector_Remove(int videoindex);
 
  
 	API_EXPORT void BauotechAlgoConnector_SetCameraRequestCallback(CameraRequestCallback callback);
