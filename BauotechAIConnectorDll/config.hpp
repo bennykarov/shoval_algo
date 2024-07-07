@@ -2,7 +2,7 @@
 
 
 #define MAX_OBJECTS 30 
-#define MAX_CAMERAS 10 
+// #define MAX_CAMERAS 40 
 
 namespace CONSTANTS {
 	int const FPS = 30;
@@ -18,6 +18,8 @@ namespace CONSTANTS {
 	int const DEFAULT_SKIP_FRAMES_BGSEG = 1;
 	int const DEFAULT_SKIP_FRAMES_IN_MOTION_YOLO = 2;//  2; // Process yolo in case motion was detected 
 	int const DEFAULT_SKIP_FRAMES_YOLO = 2; // 10;   // Process yolo in constant intervals 
+
+	int const DEFAULT_LOADBALANCER_RESOURCE = 4;
 
 };
 
@@ -71,6 +73,7 @@ struct Config
 	float MvarThreshold = 580.0;
 	float MlearningRate = -1.;
 	int useGPU = 1;
+	int GPUBatchSize = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
 	std::vector <int> camROI = { 0,0,0,0 }; // RECT 
 	cv::Rect  motionROI;
 	};

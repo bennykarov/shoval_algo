@@ -48,22 +48,23 @@ int CAlert::Siren(std::vector <CObject> objects)
 }
 
 
-
+/*---------------------------------------------------------------------------------
+* Check if object is in polygon area
+---------------------------------------------------------------------------------*/
 std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
 {
-    std::vector <CObject> intruders;
+    std::vector <CObject> selected;
 
     if (m_polyPoints.empty())
-        return intruders;
+        return selected;
 
 	for (auto obj : objects) {
         if (obj.m_label == m_label && cv::pointPolygonTest(m_polyPoints, obj.center(), false) > 0)
-            intruders.push_back(obj);
-        else
-            bool debug = cv::pointPolygonTest(m_polyPoints, obj.center(), false);
+            selected.push_back(obj);
+        //else   bool debug = cv::pointPolygonTest(m_polyPoints, obj.center(), false);
 	}
 
-    return intruders;
+    return selected;
 }
 
 
@@ -73,12 +74,13 @@ std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
     * label type 
     * max allowed
 ------------------------------------------------------------------------------------------------------------*/
-void CAlert::set(std::vector<cv::Point > polyPoints, int label, int max_allowed, int polyID)
+void CAlert::set(std::vector<cv::Point > polyPoints, int label, int max_allowed, int polyID, int camID)
 {
     m_label = label; 
     m_maxAllowed = max_allowed;
     m_polyPoints = polyPoints;
     m_ployID = polyID;
+    m_camID = camID;
 
 	m_bbox = cv::boundingRect(m_polyPoints);
 

@@ -12,8 +12,8 @@
 class CAlert {
 public:
 	CAlert() {}
-	CAlert(std::vector<cv::Point > contour, int label, int max_allowed, int ployID) { set(contour, label, max_allowed, ployID); }
-	void	set(std::vector<cv::Point > contour, int label, int max_allowed, int ployID);
+	CAlert(std::vector<cv::Point > contour, int label, int max_allowed, int ployID, int camID = -1) { set(contour, label, max_allowed, ployID, camID); }
+	void	set(std::vector<cv::Point > contour, int label, int max_allowed, int ployID, int camID);
 
 	int		Siren(std::vector <CObject> objects);
 	std::vector <CObject> selectObjects(std::vector <CObject> objects);
@@ -22,10 +22,10 @@ public:
 	bool checkPolygon(int width, int height)
 	{
 		for (auto& point : m_polyPoints) {
-			if (point.x >= width)
+			if (point.x < 0 || point.x >= width  )
 				return false;
 			//point.x = width - 1;
-			if (point.y >= height)
+			if (point.y < 0 || point.y >= height)
 				return false;
 			//point.y = height - 1;
 		}
