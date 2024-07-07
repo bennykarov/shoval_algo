@@ -8,9 +8,12 @@ static std::shared_mutex mtx;
     void CSemaphore::release() 
     {
         std::unique_lock<std::shared_mutex> lock(mtx);
-        count--;
-        if (count < 0)
-            std::cout << "Error in semaphore counter !!!!\n";
+        if (count > 0)
+            count--;
+    #ifdef PRINT_LOAD_BALANCER
+        else
+            std::cout << "CSemaphore overflow !\n";
+    #endif 
     }
 
     bool CSemaphore::take() 

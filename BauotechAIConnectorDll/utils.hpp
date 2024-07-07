@@ -163,49 +163,14 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 
 		 return  (box.x != origBbox.x || box.y != origBbox.y || box.width != origBbox.width || box.height != origBbox.height);
 	 }
-#if 0
-	 static void   checkBounderies(cv::Rect& box, cv::Size imgSize)
-	 {
-		 if (box.x < 0)
-			 box.x = 0;
-		 if (box.y < 0)
-			 box.y = 0;
-		 if (box.x + box.width >= imgSize.width)
-			 box.width = imgSize.width - box.x - 1;
-		 if (box.y + box.height >= imgSize.height)
-			 box.height = imgSize.height - box.y - 1;
-	 }
-
-	 static void   checkBounderies(cv::Rect2d& box, cv::Size imgSize)
-	 {
-		 if (box.x < 0)
-			 box.x = 0;
-		 if (box.y < 0)
-			 box.y = 0;
-		 if (box.x + box.width >= imgSize.width)
-			 box.width = imgSize.width - box.x - 1;
-		 if (box.y + box.height >= imgSize.height)
-			 box.height = imgSize.height - box.y - 1;
-	 }
-
-	 static void   checkBounderies(cv::Rect2f  &box, cv::Size imgSize)
-	 {
-		 if (box.x < 0)
-			 box.x = 0;
-		 if (box.y < 0)
-			 box.y = 0;
-		 if (box.x + box.width >= (float)imgSize.width)
-			 box.width = (float)imgSize.width - box.x - 1.;
-		 if (box.y + box.height >= (float)imgSize.height)
-			 box.height = (float)imgSize.height - box.y - 1.;
-	 }
-#endif 
+ 
 	 static bool nearEdges(cv::Size size, cv::Rect box);
 
 	 static cv::Rect2f scaleBBox(cv::Rect2f rect, float scale);
 	 static cv::Rect   scaleBBox(cv::Rect rect, float scale);
 	 static cv::Rect   mergeBBoxSize(cv::Rect rect1, cv::Rect rect2, float AlphaBland);
 	 static cv::Rect   mergeBBoxes(cv::Rect rect1, cv::Rect rect2, float AlphaBland);
+
 	 //static cv::Rect   mergeBBoxes2(cv::Rect rect1, cv::Rect rect2, float AlphaBland);
 
 
