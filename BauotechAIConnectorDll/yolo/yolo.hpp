@@ -3,14 +3,20 @@
 
 const float YOLO_INPUT_WIDTH = 640.0;
 const float YOLO_INPUT_HEIGHT = 480.0;
+//const float YOLO_INPUT_HEIGHT = 640.0;
 
 const float YOLO5_INPUT_WIDTH = 640.0;
 const float YOLO5_INPUT_HEIGHT = 640.0;
 
 const float YOLO8_INPUT_WIDTH = 640.0;
 const float YOLO8_INPUT_HEIGHT = 480.0;
+//const float YOLO8_INPUT_HEIGHT = 640.0;
 
 const int VEHICLE_CLASS_ID = 999;
+
+const float YOLO_SCORE_THRESHOLD = 0.55; // 0.55;
+const float YOLO_PERSON_SCORE_THRESHOLD = 0.15;
+
 
 // DDEBUG function - should read from classes file!!!
 std::string getYoloClassStr(int i);

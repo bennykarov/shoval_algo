@@ -1,3 +1,4 @@
+#include <Windows.h> // Beep()
 #include <fstream>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/opencv.hpp>
@@ -24,10 +25,8 @@ const std::vector<cv::Scalar> colors = { cv::Scalar(255, 255, 0), cv::Scalar(0, 
 
 
 //const float SCORE_THRESHOLD = 0.45;
-const float SCORE_THRESHOLD = 0.55;
-const float PERSON_SCORE_THRESHOLD = 0.15;
 const float NMS_THRESHOLD = 0.5;
-const float CONFIDENCE_THRESHOLD = 0.25;
+//const float CONFIDENCE_THRESHOLD = 0.25;
 
 // Text parameters.
 const float FONT_SCALE = 0.7;
@@ -90,6 +89,7 @@ bool load_net_(cv::dnn::Net& net, bool is_cuda)
         std::cout << "Attempty to use CUDA\n";
         result.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
         result.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA_FP16);
+        //result.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
     }
     else
     {
@@ -105,11 +105,30 @@ bool load_net_(cv::dnn::Net& net, bool is_cuda)
 
 vector<Mat> pre_process(Mat& input_image, Net& net)
 {
+
+    // DDEBUG - enhance image :   -------------------------------------
+    cv::Mat gray,imgEnhanced;
+    if (1) {
+        if (input_image.channels() > 1)
+            cv::cvtColor(input_image, gray, cv::COLOR_BGR2GRAY);
+        else
+            gray = input_image;
+        /*
+        if (0)
+            cv::equalizeHist(gray, imgEnhanced); //DDEBUG enhance
+        if (0) // DDEBUG 
+            cv::GaussianBlur(gray, imgEnhanced, cv::Size(5, 5), 3.0, 3.0);
+        */
+    }
+    else
+        imgEnhanced = input_image;
+    //----------------------------------------------------------------- 
     // Convert to blob.
     Mat blob;
     bool doCrop = false;
     blobFromImage(input_image, blob, 1. / 255., Size(YOLO_INPUT_WIDTH, YOLO_INPUT_HEIGHT), Scalar(), true, doCrop);
-
+    //blobFromImage(imgEnhanced, blob, 1. / 255., Size(YOLO_INPUT_WIDTH, YOLO_INPUT_HEIGHT), Scalar(), true, doCrop, CV_8U);
+    
     net.setInput(blob);
     vector<Mat> outputs;
     if (!blob.empty()) {
@@ -156,7 +175,7 @@ Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& c
         if (class_id.x == 0)
             int debug = 10;
 
-        float scoreThreshold = (class_id.x == 0) ? PERSON_SCORE_THRESHOLD : SCORE_THRESHOLD;
+        float scoreThreshold = (class_id.x == 0) ? YOLO_PERSON_SCORE_THRESHOLD : YOLO_SCORE_THRESHOLD;
         if (maxClassScore > scoreThreshold)
         {
             confidences.push_back(maxClassScore);
@@ -180,7 +199,7 @@ Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& c
     }
     // Perform Non-Maximum Suppression and draw predictions.
     vector<int> indices;
-    NMSBoxes(boxes, confidences, SCORE_THRESHOLD, NMS_THRESHOLD, indices);
+    NMSBoxes(boxes, confidences, YOLO_SCORE_THRESHOLD, NMS_THRESHOLD, indices);
     //cout << "num detections finally : "<< indices.size() <<endl;
     for (int i = 0; i < indices.size(); i++)
     {
@@ -209,14 +228,10 @@ Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& c
 
 bool CYolo8::load_net(bool is_cuda)
 {
-    //std::filesystem::path cwd = std::filesystem::current_path();
-
-    //auto result = cv::dnn::readNet(m_modelFolder + "/yolov5s.onnx");
     auto result = cv::dnn::readNet(m_modelFolder + modelFName);
 
     if (result.empty())
         return false;
-
     //auto result = cv::dnn::readNet("config_files/yolov5n.onnx");
     if (is_cuda) {
         //Beep(1100, 200);
@@ -298,12 +313,10 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
         minMaxLoc(scores, 0, &maxClassScore, 0, &class_id);
 
 
-        if (class_id.x == 0 && maxClassScore < PERSON_SCORE_THRESHOLD && maxClassScore && PERSON_SCORE_THRESHOLD > PERSON_SCORE_THRESHOLD)
-            int debug = 10;
-
-        float scoreThreshold = (class_id.x == 0) ? PERSON_SCORE_THRESHOLD : SCORE_THRESHOLD;
+        float scoreThreshold = (class_id.x == 0) ? YOLO_PERSON_SCORE_THRESHOLD : YOLO_SCORE_THRESHOLD;
         if (maxClassScore > scoreThreshold)
         {
+
             confidences.push_back(maxClassScore);
             class_ids.push_back(class_id.x);
 
@@ -319,6 +332,19 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
             int height = int(h * y_factor);
 
             boxes.push_back(cv::Rect(left, top, width, height));
+
+
+            if (0) { // DDEBUG DDEBUG DDEBUG DDEBUG TEST SECOND LEVEL 
+                cv::Mat secondScores = scores.clone();
+                auto val = secondScores.at<float>(0, class_id.x);
+                secondScores.at<float>(0, class_id.x) = 0;
+                cv::Point class_id2nd;
+                double secondClassScore;
+                minMaxLoc(secondScores, 0, &secondClassScore, 0, &class_id2nd);
+                float diff = maxClassScore - secondClassScore;
+                diff += 1;
+            }
+
         }
         //else if (maxClassScore > 0.2)    std::cout << " drop low score " << maxClassScore << "\n";
 
@@ -326,10 +352,10 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
     }
     // Perform Non-Maximum Suppression and draw predictions.
     vector<int> indices;
-    NMSBoxes(boxes, confidences, SCORE_THRESHOLD, NMS_THRESHOLD, indices);
+    NMSBoxes(boxes, confidences, YOLO_SCORE_THRESHOLD, NMS_THRESHOLD, indices);
 
     std::vector<int> nms_result;
-    cv::dnn::NMSBoxes(boxes, confidences, SCORE_THRESHOLD, NMS_THRESHOLD, nms_result);
+    cv::dnn::NMSBoxes(boxes, confidences, YOLO_SCORE_THRESHOLD, NMS_THRESHOLD, nms_result);
     for (int i = 0; i < nms_result.size(); i++) {
         int idx = nms_result[i];
         YDetection result;
@@ -339,4 +365,8 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
         output.push_back(result);
     }
 
+    // DDEBUG TEST 
+    int signX = 200;
+    cv::Size  sighWidth = cv::Size(50,50);
+    int signDim = 50;
 }
