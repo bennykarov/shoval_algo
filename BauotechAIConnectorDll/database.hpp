@@ -4,6 +4,8 @@
 #include <vector>
 #include <boost/lexical_cast.hpp> 
 
+#include "config.hpp"
+
 
  using namespace std;
 
@@ -26,6 +28,11 @@
 	 static std::string add_soffix(const std::string & filename, const std::string postfix);
 	 static bool file_exists(const std::string & filename);
 	 static bool folder_exists(const std::string & filename);
+
+
+	 static bool readConfigFile(Config& conf);
+	 static bool readConfigFile(std::string ConfigFName, Config& conf);
+
 
  };
 

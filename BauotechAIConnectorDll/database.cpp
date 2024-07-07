@@ -7,10 +7,20 @@
 #include <codecvt>
 
 
+
+#include "opencv2/opencv.hpp"
+#include "opencv2/core/core.hpp"
+#include "opencv2/videoio.hpp"
+
+// config file
 #include <boost/property_tree/ptree.hpp>
-//#include <boost/property_tree/ini_parser.hpp>
-//#include <boost/lexical_cast.hpp> 
+#include <boost/property_tree/ini_parser.hpp>
+#include <boost/lexical_cast.hpp> 
 #include <boost/property_tree/json_parser.hpp>
+#include "files.hpp"
+#include "utils.hpp"
+#include "CObject.hpp"
+
 
 #include "database.hpp"
 
@@ -238,3 +248,56 @@ void json_as_vector_example()
      }
  }
 
+
+bool FILE_UTILS::readConfigFile(Config& conf)
+{
+    return readConfigFile(FILES::CONFIG_FILE_NAME, conf);
+
+}
+
+bool FILE_UTILS::readConfigFile(std::string ConfigFName, Config& conf)
+{
+    if (!FILE_UTILS::file_exists(ConfigFName)) {
+        std::cout << "WARNING : Can't find Config.ini file, use default values \n";
+        return false;
+    }
+
+    boost::property_tree::ptree pt;
+    boost::property_tree::ini_parser::read_ini(ConfigFName, pt);
+    // [GENERAL]
+    conf.videoName = pt.get<std::string>("GENERAL.video", conf.videoName);
+    conf.roisName = pt.get<std::string>("GENERAL.rois", conf.roisName);
+    conf.waitKeyTime = pt.get<int>("GENERAL.delay-ms", conf.waitKeyTime);
+    conf.record = pt.get<int>("GENERAL.record", conf.record);
+    conf.demoMode = pt.get<int>("GENERAL.demo", conf.demoMode);
+    conf.debugLevel = pt.get<int>("GENERAL.debug", conf.debugLevel);
+    //conf.showTruck = pt.get<int>("GENERAL.showTruck", conf.showTruck);
+    conf.showMotion = pt.get<int>("GENERAL.showMotion", conf.showMotion);
+    conf.camROI = to_array<int>(pt.get<std::string>("GENERAL.camROI", "0,0,0,0"));
+
+
+    //---------
+    // ALGO:
+    //---------
+    // [OPTIMIZE]  Optimization
+    conf.skipMotionFrames = pt.get<int>("ALGO.stepMotion", conf.skipMotionFrames);
+    conf.skipDetectionFrames = pt.get<int>("ALGO.stepDetection", conf.skipDetectionFrames);
+    conf.skipDetectionFramesInMotion = pt.get<int>("ALGO.stepDetectionInMotion", conf.skipDetectionFramesInMotion);
+    conf.skipDetectionFramesInMotion = pt.get<int>("ALGO.stepTracking", conf.skipDetectionFramesInMotion);
+    std::vector <int> motionROI_vec = to_array<int>(pt.get<std::string>("ALGO.motionROI", "0,0,0,0"));
+    if (motionROI_vec[2] > 0) // width
+        conf.motionROI = cv::Rect(motionROI_vec[0], motionROI_vec[1], motionROI_vec[2], motionROI_vec[3]);
+
+    conf.modelFolder = pt.get<std::string>("ALGO.modelFolder", conf.modelFolder);
+    conf.scale = pt.get<float>("ALGO.scale", conf.scale);
+    conf.MHistory = pt.get<int>("ALGO.MHistory", conf.MHistory);
+    conf.MvarThreshold = pt.get<float>("ALGO.MvarThreshold", conf.MvarThreshold);
+    conf.MlearningRate = pt.get<float>("ALGO.MlearningRate", conf.MlearningRate);
+    conf.motionType = pt.get<int>("ALGO.motion", conf.motionType);
+    conf.trackerType = pt.get<int>("ALGO.tracker", conf.trackerType);
+    conf.trackerStep = pt.get<int>("ALGO.trackerStep", conf.trackerStep);
+    conf.MLType = pt.get<int>("ALGO.ML", conf.MLType);
+    conf.GPUBatchSize = pt.get<int>("ALGO.GPUBatchSize", conf.GPUBatchSize);
+
+    return true;
+}
