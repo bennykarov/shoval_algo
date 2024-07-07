@@ -18,7 +18,7 @@
 class CAlgoProcess {
 public:
 	~CAlgoProcess();
-	bool init(int video_index, int width, int height, int image_size, int pixelWidth);
+	bool init(int video_index, int width, int height, int image_size, int pixelWidth, int invertImage);
 	//void setRousceSemaphore(CSemaphore *sema) {m_resourceSemaphore = sema;}
 	void addPolygon(int CamID, int polygonId, char* DetectionType, int MaxAllowed, int Polygon[], int polygonSize);
 	void polygonClear();
@@ -36,7 +36,7 @@ public:
 	* Process thread: Fetching frame from the queue , process frame and send to callback
 	  ---------------------------------------------------------------------*/
 	int run(TSBuffQueue* bufQ, CLoadBalaner* loader);
-	int run(TSBuffQueue* bufQ, AutoResetNumericEvent* camRes) { return 0; } // DDEBUG 
+	//int run(TSBuffQueue* bufQ, AutoResetNumericEvent* camRes) { return 0; } // DDEBUG 
 	int run_sync(void* pData, int frameNum, ALGO_DETECTION_OBJECT_DATA* AIobjects);
 	int run_th2(TSBuffQueue* bufQ, CLoadBalaner* loader);
 
@@ -54,6 +54,7 @@ private:
 
 
 private:
+	bool m_active = false;
 	std::thread m_thread;
 	AutoResetEvent m_event;
 	CameraAICallback m_callback;
@@ -64,6 +65,7 @@ private:
 
 	std::mutex m_BufferMutex;
 
+	
 	std::atomic_bool m_terminate = false;
 	int m_frameNum = -1;
 	int m_videoIndex;
@@ -85,5 +87,6 @@ private:
 	CTimer m_timer;
 
 	std::queue<CCycle>         *m_loaderResQueuePtr; // loader queue for resource 
+	CLoadBalaner* m_loader; // Load Balancer class pointer
 
 };
