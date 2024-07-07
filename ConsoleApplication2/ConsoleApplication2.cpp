@@ -29,26 +29,45 @@
 #include "rapidjson/error/en.h"
 
 
+// read config file
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/ini_parser.hpp>
+#include <boost/lexical_cast.hpp> 
+
+
 #include "utils.hpp"
 #include "../BauotechAIConnectorDll/files.hpp"
 #include "../BauotechAIConnectorDll/AlgoApi.h"
 #include "../BauotechAIConnectorDll/config.hpp"
 #include "../BauotechAIConnectorDll/timer.hpp"
 #include "../BauotechAIConnectorDll/yolo/yolo.hpp"
+#include "../BauotechAIConnectorDll/CObject.hpp"  // required by alert.hpp
+#include "../BauotechAIConnectorDll/alert.hpp"
+#include "../BauotechAIConnectorDll/database.hpp"
 #include "draw.hpp"
 
 
+static std::mutex     gCamRequestMtx;
+HANDLE g_hConsole;
+
 int main_siamRPN(int argc, char** argv);
-//std::string cameraFname = R"(C:\Program Files\Bauotech\AI\cameras100.json)";
-std::string cameraFname = FILES::CAMERAS_FILE_NAME; //  R"(C:\Program Files\Bauotech\AI\cameras10.json)";
+//std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras1_car.json)";
+//std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras1_persons.json)";
+std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\camera_staticCars.json)";
+
+//std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras10.json)";
+//std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras_Double.json)";
 
 
 
 // GLOBALS:
 int main_camFileGen(int argc, char* argv[]);
-std::vector <CAlert_> g_cameraInfos;
+std::vector <CAlert> g_cameraInfos;
+std::vector <std::string> g_cameraInfosLabelStr; // duplicate te original label string for multiple labels tests
+std::vector <int> gVideosToRun; // cams batch 
 
-int videosNum = 1; //11; // DDEBUG 
+
+int NumberOfVideos = 1;  // DDEBUG 
 int videoTodisplayInd = 0;
 
 
@@ -56,6 +75,7 @@ int videoTodisplayInd = 0;
 /*------------------------------------------------------------------------------------------------------
  *									U T I L S     function 
  ------------------------------------------------------------------------------------------------------*/
+ 
  /*--------------------------------------------------------------------------------------------
  *  Read cameras ROI ( as vector (polygon))
  * Format:
@@ -65,7 +85,7 @@ int videoTodisplayInd = 0;
  * polygon <point1_X, point1_Y, point2_X, point2_Y, ...>
  * cameraIndex = -1 (or any negative num) means read all cam IDs
   --------------------------------------------------------------------------------------------*/
-int readCamerasJson(std::string fname, std::vector <CAlert_>& cameras, int cameraIndex)
+int readCamerasJson(std::string fname, std::vector <CAlert>& cameras, int cameraIndex)
 {
 	FILE* fp;
 	fopen_s(&fp, fname.c_str(), "rb");
@@ -107,7 +127,7 @@ int readCamerasJson(std::string fname, std::vector <CAlert_>& cameras, int camer
 
 	try {
 		for (itr = doc.Begin(); itr != doc.End(); ++itr) {
-			CAlert_ camInfo;
+			CAlert camInfo;
 			// Access the data in the object
 			int camID = itr->GetObject_()["camID"].GetInt();
 			if (cameraIndex >= 0 && camID != cameraIndex)
@@ -142,12 +162,60 @@ int readCamerasJson(std::string fname, std::vector <CAlert_>& cameras, int camer
 }
 
 
-/// ////////////////////////////////////////
+/*------------------------------------------------------------------------------------------------------
+ * Dynamic add poligons:
+ takes 
+ ------------------------------------------------------------------------------------------------------*/
 
-int addPolygonsFromCameraJson(cv::Mat frame)
+int addPolygonsAuto(std::string cameraFName, cv::Mat frame, int cameraNum, int detectionLabel)
 {
-	int camID = 0;
-	readCamerasJson(cameraFname, g_cameraInfos, camID); // read all cam's
+	CAlert templateCamInf;
+	// Read json for polygon setting
+	
+	readCamerasJson(cameraFName, g_cameraInfos, -1); // read all cam's
+
+	if (g_cameraInfos.empty()) {
+		templateCamInf.m_polyPoints = { cv::Point(0,0), cv::Point(frame.cols - 1,0), cv::Point(frame.cols - 1,frame.rows - 1), cv::Point(0,frame.rows - 1) };
+		std::cout << " Can't open file " << cameraFName << " use entire image ROI as polygon \n";
+	}
+	else 
+		templateCamInf = g_cameraInfos[0];
+
+	int polygonId = 0;
+	templateCamInf.m_label = detectionLabel;
+	templateCamInf.m_maxAllowed = 0;
+
+
+	for (int camID = 0; camID < cameraNum;camID++) {
+		if (camID >= MAX_VIDEOS)
+			continue;
+
+		templateCamInf.m_camID = camID;
+
+
+		std::vector <int> polygonVec;
+		for (auto point : templateCamInf.m_polyPoints) {
+			polygonVec.push_back(point.x);
+			polygonVec.push_back(point.y);
+		}
+
+		char* labelsStr = (char*)labelToStr(templateCamInf.m_label); // change for debugging multiple labels 
+		int _videoIndex = templateCamInf.m_camID;
+		BauotechAlgoConnector_AddPolygon(_videoIndex,
+			_videoIndex, //CamID,
+			polygonId++,
+			labelToStr(templateCamInf.m_label),//DetectionType,  // debugLabel,  
+			templateCamInf.m_maxAllowed, // MaxAllowed,
+			&(polygonVec[0]),//Polygon,
+			templateCamInf.m_polyPoints.size() * 2); // polygonSize);
+	}
+
+	return g_cameraInfos.size();
+}
+int addPolygonsFromCameraJson(std::string cameraFName,cv::Mat frame)
+{
+	int camID = -1; // read all cameras
+	readCamerasJson(cameraFName, g_cameraInfos, camID); // read all cam's
 
 	for (auto& camInf : g_cameraInfos) {
 		if (camInf.m_polyPoints.empty() || !camInf.checkPolygon(frame.cols, frame.rows))
@@ -158,39 +226,62 @@ int addPolygonsFromCameraJson(cv::Mat frame)
 	int polygonId = 0;
 
 	for (auto camInf : g_cameraInfos) {
+		if (camInf.m_camID >= MAX_VIDEOS)
+			continue;
+
 		std::vector <int> polygonVec;
 		for (auto point : camInf.m_polyPoints) {
 			polygonVec.push_back(point.x);
 			polygonVec.push_back(point.y);
 		}
 
+		char* labelsStr = (char*)labelToStr(camInf.m_label); // change for debugging multiple labels 
+		//char debugLabel[] = "car,person";
 		int _videoIndex = camInf.m_camID;
 		BauotechAlgoConnector_AddPolygon(_videoIndex,
 			_videoIndex, //CamID,
 			polygonId++,
-			labelToStr(camInf.m_label),//DetectionType,
+			labelToStr(camInf.m_label),//DetectionType,  // debugLabel,  
 			camInf.m_maxAllowed, // MaxAllowed,
 			&(polygonVec[0]),//Polygon,
 			camInf.m_polyPoints.size() * 2); // polygonSize);
 	}
 
-
 	return g_cameraInfos.size();
 }
 
 
+
+
+
+//__cdecl*
+void consoleCameraRequestCallback(const uint32_t *camera, int size)
+{
+	std::unique_lock<std::mutex> lock(gCamRequestMtx);
+
+	gVideosToRun.clear();
+
+	for (int i = 0; i < size; i++)
+		gVideosToRun.push_back(camera[i]);
+
+	lock.unlock();
+}
+
+
+
+
 int main_SHOVAL(int argc, char* argv[])
 {
-	videoTodisplayInd = MIN(1, videosNum - 1);
-
-	bool ASYNC = true; // DDEBUG flag 
+	bool ASYNC = true; // DDEBUG flag
+	uint8_t invertImg = 0; //  readConfigFIle(ConfigFName) == 1;
+	int configSet = 0;
 
 	std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjectVec;
-	ALGO_DETECTION_OBJECT_DATA AIObjects[MAX_CAMERAS][10];
+	ALGO_DETECTION_OBJECT_DATA AIObjects[MAX_VIDEOS][MAX_OBJECTS];
 
 	 
-	videosNum = MIN(videosNum, MAX_CAMERAS);
-
+	NumberOfVideos = MIN(NumberOfVideos, MAX_VIDEOS);
+	videoTodisplayInd = min(videoTodisplayInd, NumberOfVideos - 1);
 
 	int frameNum = 0;
 	int skipFrames = 0;
@@ -200,15 +291,44 @@ int main_SHOVAL(int argc, char* argv[])
 	uint32_t videoIndex = 0;
 
 
-	if (argc < 2) {
-		std::cout << "Usage: " << argv[0] << " <video file name> [skip frames]\n";
+	if (argc < 4) {
+		std::cout << "Usage: " << argv[0] << " <video file name> <numbero of cameras> <detection class>\n";
+		std::cout << "<detection class> = -1    means : takes class from camera.json \n";
 		return -1;
 	}
 
-	if (argc > 1)
+	if (argc > 1) {
 		videoName = argv[1];
-	if (argc > 2)
-		skipFrames = atoi(argv[2]);
+		//videoName.erase(std::remove(videoName.begin(), videoName.end(), '"'), videoName.end());
+	}
+
+	int detectionLabel = -1;
+
+	if (argc > 3) {
+		NumberOfVideos  = atoi(argv[2]);
+		detectionLabel = atoi(argv[3]);
+
+		/*
+		switch (detectionLabel) {
+		case 0:
+			CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras1_persons.json)";
+			break;
+		case 2:
+			CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras1_car.json)";
+			break;
+		}
+		*/
+	}
+
+
+	
+	MessageBoxA(0, std::string("cams= " + std::to_string(NumberOfVideos) + ";  label= " + std::to_string(detectionLabel)).c_str(), "EXCEPTION!", MB_OK);
+	/*
+	if (argc > 3)
+		skipFrames = atoi(argv[3]);
+	*/
+
+
 
 	int DrawDetections = 2; // full display
 	if (argc > 3)
@@ -217,11 +337,14 @@ int main_SHOVAL(int argc, char* argv[])
 		else if (toUpper(std::string(argv[3])) == "NODETECTION")
 			DrawDetections = 1;  // display frame w/o detections
 
+
 	cv::VideoCapture cap;
 	cv::Mat frame;
 
 	if (!cap.open(videoName)) {
-		std::cout << "Can't open file  " << videoName << ")\n";
+		SetConsoleTextAttribute(g_hConsole, 64);
+		std::cerr << "ERROR ERROR : Can't open file  " << videoName << ")\n";
+		SetConsoleTextAttribute(g_hConsole, 7);
 		return -1;
 	}
 
@@ -230,7 +353,7 @@ int main_SHOVAL(int argc, char* argv[])
 	cap >> frame;
 
 	if (frame.empty()) {
-		std::cout << "Can't capture " << videoName << ")\n";   return -1;
+		std::cout << "END OF VIDEO FILE" << videoName << ")\n";   return -1;
 	}
 
 	// read camera info - if no ROI - use full frame
@@ -243,13 +366,13 @@ int main_SHOVAL(int argc, char* argv[])
 	uint8_t youDraw = 0; // DDEBUG DRAW 
 
 	// Params per camera:
-	uint8_t* pData[MAX_CAMERAS];
-	ALGO_DETECTION_OBJECT_DATA Objects[MAX_CAMERAS][MAX_OBJECTS];
+	uint8_t* pData[MAX_VIDEOS];
+	ALGO_DETECTION_OBJECT_DATA Objects[MAX_VIDEOS][MAX_OBJECTS];
 	ALGO_DETECTION_OBJECT_DATA* pObjects[MAX_OBJECTS];
-	uint32_t objectCount[MAX_CAMERAS];
-	uint32_t* pObjectCount[MAX_CAMERAS];
-	uint32_t alertCount[MAX_CAMERAS];
-	uint32_t* pAlertCount[MAX_CAMERAS];
+	uint32_t objectCount[MAX_VIDEOS];
+	uint32_t* pObjectCount[MAX_VIDEOS];
+	uint32_t alertCount[MAX_VIDEOS];
+	uint32_t* pAlertCount[MAX_VIDEOS];
 
 
 	width = frame.cols;
@@ -257,29 +380,59 @@ int main_SHOVAL(int argc, char* argv[])
 	image_size = width * height * frame.channels();
 	pixelWidth = frame.channels(); //* 8; // DDEBUG : for opencv  RGB format
 
-	for (int i = 0; i < videosNum; i++) {
+	// Invert image if required:
+	cv::Mat post_frame;
+	if (invertImg == 1)
+		cv::flip(frame, post_frame, 0);
+	else
+		post_frame = frame;
+
+	for (int i = 0; i < NumberOfVideos; i++) {
 		pData[i] = (uint8_t*)malloc(image_size);
-		memcpy(pData[i], frame.data, image_size);
+		memcpy(pData[i], post_frame.data, image_size);
 	}
-
-
 
 	// Init
+	//bool loadBalance = true;
 	BauotechAlgoConnector_Init();
 
+	BauotechAlgoConnector_SetCameraRequestCallback(consoleCameraRequestCallback);
 
-	addPolygonsFromCameraJson(frame);
 
-	for (int _videoIndex = 0; _videoIndex < videosNum; _videoIndex++) {
+	int numOfPolygons;
+	if (detectionLabel < 0)
+		numOfPolygons = addPolygonsFromCameraJson(CAMERAFNAME , frame);
+	else
+		numOfPolygons = addPolygonsAuto(CAMERAFNAME, frame, NumberOfVideos, detectionLabel);
+
+	if (numOfPolygons == 0)
+		std::cout << "\n*** WARNING : nopolygons had beed defined ! \n";
+
+	for (int i = 0; i < NumberOfVideos; i++)
+		gVideosToRun.push_back(i);
+	
+
+	for (int _videoIndex : gVideosToRun) {
 		if (ASYNC)
-			BauotechAlgoConnector_Config(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, nullptr);
-		else 
-			BauotechAlgoConnector_Config_sync(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, nullptr);
+			BauotechAlgoConnector_Config(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, invertImg, nullptr);
+		else
+			BauotechAlgoConnector_Config_sync(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, invertImg, nullptr);
 
-		pData[_videoIndex] = (uint8_t*)malloc(image_size);
-		memcpy(pData[_videoIndex], frame.data, image_size);
+		if (0)
+		{
+			pData[_videoIndex] = (uint8_t*)malloc(image_size);
+			memcpy(pData[_videoIndex], frame.data, image_size);
+		}
 	}
 
+	// DDEBUG make cam 1 activeCam:
+	if (0) {
+		uint32_t cam = videoTodisplayInd;
+		uint32_t type = 1;
+		BauotechAlgoConnector_SetCameraType(cam, type);
+	}
+	
+	
 	int key = 0;
 	int wait = 10;
 
@@ -287,6 +440,7 @@ int main_SHOVAL(int argc, char* argv[])
 		cap >> frame;
 		frameNum++;
 	}
+
 
 	if (1) // DDEBUG
 		cv::imwrite("c:\\tmp\\cameraFrame.png", frame);
@@ -299,29 +453,57 @@ int main_SHOVAL(int argc, char* argv[])
 	auto prev = prev30;
 	*/
 	float maxElapsed = 0;
-	int objectsDetected[MAX_CAMERAS];
+	int objectsDetected[MAX_VIDEOS];
 	//------------------------------------------------------
 	// Video Main Loop
 	//------------------------------------------------------
 	int skipEveryframes = 0;
 	while (!frame.empty()) {
-		if (ASYNC)
-			Sleep(10); // DDEBUG DDEBUG simulate RT camera 
 		/*
-		if (skipEveryframes > 0 && frameNum % (skipEveryframes + 1) != 0) {
-			cap >> frame;
-			if (frame.empty()) {
-				cap.set(cv::CAP_PROP_POS_FRAMES, 0); // start again from the beginning
-				cap >> frame;
-			}
-			frameNum++;
-			continue;
-		}
+		if (ASYNC)
+			Sleep(20); // DDEBUG DDEBUG simulate  RT cameras
 		*/
 
+#if 0
+		if (0) {// DDEBUG TEST RT REMOVING & ADDING of a CAMERA 
+			int videoToRemove = 0;
+			if (frameNum == 100) {
+				BauotechAlgoConnector_Remove(videoToRemove);
+			}			
+			else if (frameNum == 200) {
+				auto camInf = g_cameraInfos[videoToRemove];
+
+				// prepare poly points 
+				std::vector <int> polygonVec;
+				for (auto point : camInf.m_polyPoints) {
+					polygonVec.push_back(point.x);
+					polygonVec.push_back(point.y);
+				}
+
+
+				BauotechAlgoConnector_AddPolygon(videoToRemove,
+					videoToRemove, //CamID,
+					camInf.m_ployID, //polygonId++,
+					labelToStr(camInf.m_label),//DetectionType,  // debugLabel,  
+					camInf.m_maxAllowed, // MaxAllowed,
+					&(polygonVec[0]),//Polygon,
+					camInf.m_polyPoints.size() * 2); // polygonSize);
+
+				BauotechAlgoConnector_Config(videoToRemove, algo, width, height, pixelWidth, image_size, youDraw, invertImg, nullptr);
+
+			}
+		}
+#endif 
+
+		cv::Mat post_frame;
+		if (invertImg == 1)
+			cv::flip(frame, post_frame, 0);
+		else 
+			post_frame = frame;
+
 		// Launch Algo process for all cameras :
-		for (int _videoIndex = 0; _videoIndex < videosNum; _videoIndex++) {
-			memcpy(pData[_videoIndex], frame.data, image_size);
+		for (int _videoIndex : gVideosToRun) {
+			memcpy(pData[_videoIndex], post_frame.data, image_size);
 
 			if (ASYNC)
 				BauotechAlgoConnector_Run3(_videoIndex, pData[_videoIndex], frameNum); // tsQueue runner
@@ -329,11 +511,10 @@ int main_SHOVAL(int argc, char* argv[])
 				objectsDetected[_videoIndex] = BauotechAlgoConnector_Run3_sync(_videoIndex, pData[_videoIndex], AIObjects[_videoIndex], frameNum); // tsQueue runner
 		}
 
-		if (frameNum == 17)
-			int debug = 10;
 		// Read results 
 		if (ASYNC) {
-			for (int _videoIndex = 0; _videoIndex < videosNum; _videoIndex++) {
+			//for (int _videoIndex = 0; _videoIndex < NumberOfVideos; _videoIndex++) {			
+			for (int _videoIndex : gVideosToRun) {
 				objectsDetected[_videoIndex] = BauotechAlgoConnector_GetAlgoObjectData(_videoIndex, -1, AIObjects[_videoIndex]);
 			}
 		}
@@ -352,8 +533,10 @@ int main_SHOVAL(int argc, char* argv[])
 			maxElapsed = 0;
 		}
 
-		if (frameNum % 30 == 0) {
-			for (int _videoIndex = 0; _videoIndex < videosNum; _videoIndex++)
+		if (0) // DONT PRINT DETECTIONS 
+		if (frameNum % 30*20 == 0) {
+			//for (int _videoIndex = 0; _videoIndex < NumberOfVideos; _videoIndex++)
+			for (int _videoIndex : gVideosToRun)
 				std::cout << "camera (" << _videoIndex << "): " << objectsDetected[_videoIndex] << " Objects had been detected \n";
 		}
 		//----------------------------------------
@@ -369,10 +552,16 @@ int main_SHOVAL(int argc, char* argv[])
 				int debug = 10;
 		}
 
+
+
+		if (!AIObjectVec.empty())
+			//MessageBoxA(0, std::string("find " + std::to_string(AIObjectVec.size()) + "objects ").c_str(), "EXCEPTION!", MB_OK);
+			int debug = 10;
+
 		if (DrawDetections == 2)
-			key = draw(height, width, (char*)pData[videoTodisplayInd], AIObjectVec, g_cameraInfos, frameNum);
+			key = draw(height, width, (char*)pData[videoTodisplayInd], AIObjectVec, g_cameraInfos, frameNum, 0.7, invertImg);
 		else if (DrawDetections == 1)
-			key = draw(height, width, (char*)pData[videoTodisplayInd], std::vector <ALGO_DETECTION_OBJECT_DATA>(), g_cameraInfos, frameNum);
+			key = draw(height, width, (char*)pData[videoTodisplayInd], std::vector <ALGO_DETECTION_OBJECT_DATA>(), g_cameraInfos, frameNum, 0.7, invertImg);
 
 
 		//------------------
@@ -381,12 +570,13 @@ int main_SHOVAL(int argc, char* argv[])
 		if (key == 'q' || key == 27)
 			break;
 
-		if (frameNum == 0)
-			cv::waitKey(-1);
+		// Pause on start
+		//if (frameNum == 0) cv::waitKey(-1);
 
 		cap >> frame;
 		frameNum++;
 
+		if (0) // endless loop : 
 		if (frame.empty()) {
 			cap.set(cv::CAP_PROP_POS_FRAMES, 0); // start again from the beginning
 			cap >> frame;
@@ -394,8 +584,7 @@ int main_SHOVAL(int argc, char* argv[])
 
 
 		// Trick - switch displaycam each 8 sec:
-		if ((frameNum % (30*8)) == 0)
-			videoTodisplayInd = (videoTodisplayInd + 1) % videosNum;
+		//if ((frameNum % (30*8)) == 0)   videoTodisplayInd = (videoTodisplayInd + 1) % NumberOfVideos;
 
 
 	}  	// while (!frame.empty())
@@ -408,8 +597,31 @@ int main_SHOVAL(int argc, char* argv[])
 
 
 
+
+std::stringstream printMsg;
+void print()
+{
+	std::cout << printMsg.str() ;
+}
+
+template <typename T, typename... Types>
+void print(T var1, Types... var2)
+{
+	//cout << var1 << endl;
+
+	printMsg << var1 << "\n";
+
+
+	print(var2...);
+}
+
+// Driver code
 int main(int argc, char* argv[])
 {
+
+	g_hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	// you can loop k higher to see more color choices
+
 	return main_SHOVAL(argc, argv);
 	//return main_siamRPN(argc, argv);
 
