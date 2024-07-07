@@ -61,7 +61,7 @@ public:
 		m_detectionType = detectionType;
 		m_frameNum = frameNum;
 		m_bbox = r;
-		m_moving = 0; 
+		m_moving = 1; // used more as STATIC flag - object that doesnt move for sure.
 	}
 
 	bool empty() { return m_bbox.width == 0; }
