@@ -84,7 +84,8 @@ extern "C" {
 													char* DetectionType,
 													int MaxAllowed,
 													int Polygon[],
-													int polygonSize);
+													int polygonSize,
+													int motionType=0);
 
 
 

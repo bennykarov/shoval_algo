@@ -30,19 +30,19 @@ float   g_elapsedMax = 0;
 /*-----------------------------------------------------------------------------------------------
  * Vehicle gather :  "car", "motorbike","aeroplane","bus","truck"
  -----------------------------------------------------------------------------------------------*/
-void CAlgoProcess::makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int polygonId)
+void CAlgoProcess::makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId)
 {
 
 	int label = getYoloClassIndex("car");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
 	label = getYoloClassIndex("motorbike");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
 	label = getYoloClassIndex("bus");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
 	label = getYoloClassIndex("truck");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
 	/*label = getYoloClassIndex("train");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
 	*/
 }
 
@@ -142,7 +142,7 @@ CAlgoProcess::~CAlgoProcess()
 	/*----------------------------------------------------------------------------------------------------------------------------------
 	* API - add polygon before call to polygonInit()
 	----------------------------------------------------------------------------------------------------------------------------------*/
-	void CAlgoProcess::addPolygon(int CamID, int polygonId, char* DetectionType, int MaxAllowed, int Polygon[], int polygonSize)
+	void CAlgoProcess::addPolygon(int CamID, int polygonId, char* DetectionType, int motionType, int MaxAllowed, int Polygon[], int polygonSize)
 	{
 		std::vector<cv::Point> contour;
 		std::vector <int> labels;
@@ -166,10 +166,12 @@ CAlgoProcess::~CAlgoProcess()
 				contour.push_back(cv::Point(Polygon[i], Polygon[i + 1]));
 
 			if (label == VEHICLE_CLASS_ID)
-				makeVehicleInfo(contour, MaxAllowed, polygonId); // push multiple "vehicle" classes 
+				makeVehicleInfo(contour, MaxAllowed, motionType, polygonId); // push multiple "vehicle" classes 
 			else 
-				m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, polygonId, CamID));			
+				m_camerasInfo.push_back(CAlert(contour, label, motionType, MaxAllowed, polygonId, CamID));
 		}
+
+
 	}
 
 	void CAlgoProcess::polygonClear()
@@ -242,8 +244,9 @@ CAlgoProcess::~CAlgoProcess()
 			if (1)
 				if (m_frameNum == frameBuff.frameNum)
 				{
-					//>>std::cout << "m_frameNum == frameBuff.frameNum  \n";
-					Beep(1200, 10); 
+					LOGGER::log(DLEVEL::WARNING1, "run_th2 got dulpicate frame : m_frameNum == frameBuff.frameNum");
+					if (1) 
+						Beep(1200, 10);
 					//bufQ->pop(); // release buffer
 					continue;
 				}
@@ -305,9 +308,10 @@ CAlgoProcess::~CAlgoProcess()
 			try {
 				if (m_callback != nullptr && m_objectCount > 0)
 				{
-					std::string logMsg = "Cam " + std::to_string(m_videoIndex) + " Detects : " + std::to_string(m_objectCount) + "objects"; // DDEBUG DDEBUG PRINT 
-					LOGGER::log(DLEVEL::INFO2, logMsg);
-
+					if (0) {
+						std::string logMsg = "Cam " + std::to_string(m_videoIndex) + " Detects : " + std::to_string(m_objectCount) + "objects"; // DDEBUG DDEBUG PRINT 
+						LOGGER::log(DLEVEL::INFO2, logMsg);
+					}
 					m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
 				}
 			}
@@ -432,7 +436,8 @@ CAlgoProcess::~CAlgoProcess()
 		if (m_thread.joinable())
 			m_thread.join();
 
-		//m_loader->cameraCounter(-1);
+
+		polygonClear();
 
 		return true;
 	}

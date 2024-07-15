@@ -49,7 +49,13 @@ int CAlert::Siren(std::vector <CObject> objects)
 
 
 /*---------------------------------------------------------------------------------
-* Check if object is in polygon area
+* Check if object is of the right label & motion 
+    and 
+    inside the  polygon area
+    motionType = 0 : Ignore motion
+    motionType = 1 : Only moving objects
+    motionType = 2 : Only static objects
+
 ---------------------------------------------------------------------------------*/
 std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
 {
@@ -59,7 +65,9 @@ std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
         return selected;
 
 	for (auto obj : objects) {
-        if (obj.m_label == m_label && cv::pointPolygonTest(m_polyPoints, obj.center(), false) > 0)
+        if (obj.m_label == m_label && 
+            (m_motionType == 0 || (m_motionType == 1 && obj.m_moving > 0) || (m_motionType == 2 && obj.m_moving == 0)) &&
+            cv::pointPolygonTest(m_polyPoints, obj.center(), false) > 0)
             selected.push_back(obj);
         //else   bool debug = cv::pointPolygonTest(m_polyPoints, obj.center(), false);
 	}
@@ -74,9 +82,10 @@ std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
     * label type 
     * max allowed
 ------------------------------------------------------------------------------------------------------------*/
-void CAlert::set(std::vector<cv::Point > polyPoints, int label, int max_allowed, int polyID, int camID)
+void CAlert::set(std::vector<cv::Point > polyPoints, int label, int motionType, int max_allowed, int polyID, int camID)
 {
     m_label = label; 
+    m_motionType = motionType;
     m_maxAllowed = max_allowed;
     m_polyPoints = polyPoints;
     m_ployID = polyID;

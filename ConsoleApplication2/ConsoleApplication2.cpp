@@ -49,11 +49,13 @@
 
 static std::mutex     gCamRequestMtx;
 HANDLE g_hConsole;
+int g_motionType = 0;
 
 int main_siamRPN(int argc, char** argv);
+std::string CAMERAFNAME = "";
 //std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras1_car.json)";
 //std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras1_persons.json)";
-std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\camera_staticCars.json)";
+//std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\camera_staticCars.json)";
 
 //std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras10.json)";
 //std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras_Double.json)";
@@ -207,7 +209,8 @@ int addPolygonsAuto(std::string cameraFName, cv::Mat frame, int cameraNum, int d
 			labelToStr(templateCamInf.m_label),//DetectionType,  // debugLabel,  
 			templateCamInf.m_maxAllowed, // MaxAllowed,
 			&(polygonVec[0]),//Polygon,
-			templateCamInf.m_polyPoints.size() * 2); // polygonSize);
+			templateCamInf.m_polyPoints.size() * 2,
+			g_motionType); // polygonSize);
 	}
 
 	return g_cameraInfos.size();
@@ -459,22 +462,25 @@ int main_SHOVAL(int argc, char* argv[])
 	//------------------------------------------------------
 	int skipEveryframes = 0;
 	while (!frame.empty()) {
-		/*
+		
 		if (ASYNC)
 			Sleep(20); // DDEBUG DDEBUG simulate  RT cameras
-		*/
+		
 
 #if 0
-		if (0) {// DDEBUG TEST RT REMOVING & ADDING of a CAMERA 
-			int videoToRemove = 0;
-			if (frameNum == 100) {
-				BauotechAlgoConnector_Remove(videoToRemove);
-			}			
-			else if (frameNum == 200) {
-				auto camInf = g_cameraInfos[videoToRemove];
+		{  // DDEBUG TEST RT changing motiontype:
 
+			if (frameNum == 100 || frameNum == 500) {
+				int videoToRemove = 1;
+				videoToRemove = min(videoToRemove, NumberOfVideos - 1);
+
+				int newMotionType = frameNum == 100 ? 1 : 2;
+
+				BauotechAlgoConnector_Remove(videoToRemove);
 				// prepare poly points 
+				auto camInf = g_cameraInfos[videoToRemove];
 				std::vector <int> polygonVec;
+
 				for (auto point : camInf.m_polyPoints) {
 					polygonVec.push_back(point.x);
 					polygonVec.push_back(point.y);
@@ -487,10 +493,11 @@ int main_SHOVAL(int argc, char* argv[])
 					labelToStr(camInf.m_label),//DetectionType,  // debugLabel,  
 					camInf.m_maxAllowed, // MaxAllowed,
 					&(polygonVec[0]),//Polygon,
-					camInf.m_polyPoints.size() * 2); // polygonSize);
+					camInf.m_polyPoints.size() * 2,
+					newMotionType
+					);
 
 				BauotechAlgoConnector_Config(videoToRemove, algo, width, height, pixelWidth, image_size, youDraw, invertImg, nullptr);
-
 			}
 		}
 #endif 
@@ -576,7 +583,7 @@ int main_SHOVAL(int argc, char* argv[])
 		cap >> frame;
 		frameNum++;
 
-		if (0) // endless loop : 
+		if (1) // endless loop : 
 		if (frame.empty()) {
 			cap.set(cv::CAP_PROP_POS_FRAMES, 0); // start again from the beginning
 			cap >> frame;

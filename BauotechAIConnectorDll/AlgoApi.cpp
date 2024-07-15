@@ -82,7 +82,7 @@ API_EXPORT void BauotechAlgoConnector_Init()
 	if (debugLevel > 0)
 		LOGGER::init(FILES::OUTPUT_FOLDER_NAME, DLEVEL::ALL);
 
-	LOGGER::log(DLEVEL::WARNING2, "BauotechAlgoConnector_Init()");
+	LOGGER::log(DLEVEL::INFO1, "BauotechAlgoConnector_Init()");
 
 
 	m_initialize = true;
@@ -171,12 +171,13 @@ API_EXPORT int BauotechAlgoConnector_AddPolygon(uint32_t videoIndex,
 	char* DetectionType,
 	int MaxAllowed,
 	int Polygon[],
-	int polygonSize)
+	int polygonSize,
+	int motionType)
 {
 	std::string logMSG = "API..._AddPolygon() cam=" + std::to_string(videoIndex) + "polygonPoints = " + std::to_string(polygonSize);
 	LOGGER::log(DLEVEL::INFO2, logMSG.c_str());
 
-	g_algoProcess[videoIndex].addPolygon(CamID, polygonId, DetectionType, MaxAllowed, Polygon, polygonSize);
+	g_algoProcess[videoIndex].addPolygon(CamID, polygonId, DetectionType, motionType, MaxAllowed, Polygon, polygonSize);
 	return 1;
 		
 }

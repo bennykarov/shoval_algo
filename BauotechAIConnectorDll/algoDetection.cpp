@@ -330,8 +330,10 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 }
 
 		
+	m_decipher.clear();
+
 		for (auto camInf : m_camerasInfo) 
-				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_maxAllowed, camInf.m_ployID); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
+				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_motionType, camInf.m_maxAllowed, camInf.m_ployID); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
 			//---------------------------------------------------------------------------------------
 
 
@@ -340,6 +342,8 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		if (m_params.MLType > 0)
 		{
+			if (0) /// DDEBUG
+				m_params.modelFolder = "C:/src/YOLO/yoloONNX/";
 			if (!m_yolo.init(m_params.modelFolder, m_isCuda)) {
 				std::cout << "Cant init YOLO net , quit \n";
 

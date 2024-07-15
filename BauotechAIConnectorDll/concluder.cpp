@@ -756,12 +756,20 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 	if (frameImg == nullptr)
 		return false;
 
+	// Ignore too small object
+	int maxDim = max(obj.m_bbox.width, obj.m_bbox.height);
+	if (maxDim < CONCLUDER_CONSTANTS::MIN_OBJECT_SIDE_SIZE)
+		return true;
+
+
+	// Dont check high score detection
 	if (obj.m_confidance > CONCLUDER_CONSTANTS::HIGH_YOLO_CONFIDANCE)
 		return false;
 
 
 	bool touchEdge = (obj.m_bbox.x == 0 || obj.m_bbox.y == 0 || obj.m_bbox.br().x == frameImg->size().width - 1 || obj.m_bbox.br().y == frameImg->size().height - 1);
 
+	// Ignore if  "touchEdge" and "lowCOntrast"
 	if (touchEdge) {
 		// box touch one of the the edge
 		float ratio = float(obj.m_bbox.width) / float(obj.m_bbox.height);

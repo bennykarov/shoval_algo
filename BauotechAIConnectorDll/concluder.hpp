@@ -19,6 +19,7 @@ namespace CONCLUDER_CONSTANTS
 	const int MIN_STDDEV_FOR_BOX = 20; // min color variation (contrast) rquired in detection image
 	const float MIN_BOX_RATION_FOR_PERSON = 0.8; // Person box should be nerrow (far from square)
 	const float HIGH_YOLO_CONFIDANCE = 0.9; // Person box should be nerrow (far from square)
+	const int   MIN_OBJECT_SIDE_SIZE = 20; // Object box width or height (the bigger of the two)
 
 	//const int MIN_STABLE_DETECTION_FRAMES = 7;
 	const int MIN_STABLE_DETECTION_FRAMES = 3; // 1 for load balancer where framerate is LOW ;
@@ -57,9 +58,15 @@ public:
 	CObject get(int i) { return m_objects[i].back(); }
 	int  numberOfPersonsOnBoard(); // return number of person on board (including hidden objects)
 
-	void	set(std::vector<cv::Point> contour, int label, int max_allowed, int ployID)
+
+	void    clear()
 	{
-		m_alerts.push_back(CAlert(contour, label, max_allowed, ployID));
+		m_alerts.clear();
+	}
+
+	void	set(std::vector<cv::Point> contour, int label, int motionType, int max_allowed, int ployID)
+	{
+		m_alerts.push_back(CAlert(contour, label, motionType, max_allowed, ployID));
 	}
 
 

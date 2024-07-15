@@ -20,7 +20,7 @@ public:
 	~CAlgoProcess();
 	bool init(int video_index, int width, int height, int image_size, int pixelWidth, int invertImage);
 	//void setRousceSemaphore(CSemaphore *sema) {m_resourceSemaphore = sema;}
-	void addPolygon(int CamID, int polygonId, char* DetectionType, int MaxAllowed, int Polygon[], int polygonSize);
+	void addPolygon(int CamID, int polygonId, char* DetectionType, int motionType, int MaxAllowed, int Polygon[], int polygonSize);
 	void polygonClear();
 	void initPolygons();
 
@@ -49,7 +49,7 @@ public:
 	void WakeUp();
 
 private:
-	void makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int polygonId);
+	void makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId);
 	std::vector <int> addMultiPolygons(std::string DetectionTypeList);
 
 

@@ -12,8 +12,8 @@
 class CAlert {
 public:
 	CAlert() {}
-	CAlert(std::vector<cv::Point > contour, int label, int max_allowed, int ployID, int camID = -1) { set(contour, label, max_allowed, ployID, camID); }
-	void	set(std::vector<cv::Point > contour, int label, int max_allowed, int ployID, int camID);
+	CAlert(std::vector<cv::Point > contour, int label, int motionType, int max_allowed, int ployID, int camID = -1) { set(contour, label, motionType, max_allowed, ployID, camID); }
+	void	set(std::vector<cv::Point > contour, int label, int motionType, int max_allowed, int ployID, int camID);
 
 	int		Siren(std::vector <CObject> objects);
 	std::vector <CObject> selectObjects(std::vector <CObject> objects);
@@ -38,6 +38,7 @@ public:
 	std::vector<cv::Point > m_polyPoints;
 	//std::tuple <int,int> label_allowed;
 	int m_label;
+	int m_motionType; // 0 - all, 1 = moving only , 2=static only
 	int m_maxAllowed = -1;
 	cv::Rect  m_bbox;
 
