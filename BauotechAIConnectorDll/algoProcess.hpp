@@ -49,7 +49,7 @@ public:
 	void WakeUp();
 
 private:
-	void makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId);
+	void makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId, int camID);
 	std::vector <int> addMultiPolygons(std::string DetectionTypeList);
 
 
@@ -77,6 +77,7 @@ private:
 
 
 	int m_objectCount = 0;
+	int m_alertCount = 0;
 	int m_youDraw = 0;
 
 	void fakeCallBack(int m_videoIndex, ALGO_DETECTION_OBJECT_DATA* m_pObjects, int m_objectCount, void* ptr, int something);

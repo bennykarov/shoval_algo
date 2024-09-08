@@ -30,19 +30,19 @@ float   g_elapsedMax = 0;
 /*-----------------------------------------------------------------------------------------------
  * Vehicle gather :  "car", "motorbike","aeroplane","bus","truck"
  -----------------------------------------------------------------------------------------------*/
-void CAlgoProcess::makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId)
+void CAlgoProcess::makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId, int camID)
 {
 
 	int label = getYoloClassIndex("car");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
 	label = getYoloClassIndex("motorbike");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
 	label = getYoloClassIndex("bus");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
 	label = getYoloClassIndex("truck");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
 	/*label = getYoloClassIndex("train");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
 	*/
 }
 
@@ -166,7 +166,7 @@ CAlgoProcess::~CAlgoProcess()
 				contour.push_back(cv::Point(Polygon[i], Polygon[i + 1]));
 
 			if (label == VEHICLE_CLASS_ID)
-				makeVehicleInfo(contour, MaxAllowed, motionType, polygonId); // push multiple "vehicle" classes 
+				makeVehicleInfo(contour, MaxAllowed, motionType, polygonId, CamID); // push multiple "vehicle" classes 
 			else 
 				m_camerasInfo.push_back(CAlert(contour, label, motionType, MaxAllowed, polygonId, CamID));
 		}
@@ -241,6 +241,10 @@ CAlgoProcess::~CAlgoProcess()
 				continue;
 			}
 
+
+			if (1) // DDEBUG 
+				LOGGER::setFrameNum(m_frameNum);
+
 			if (1)
 				if (m_frameNum == frameBuff.frameNum)
 				{
@@ -257,7 +261,8 @@ CAlgoProcess::~CAlgoProcess()
 			try {
 				m_timer.sample();
 				cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
-				m_objectCount = m_tracker.process(frameBGR, m_Objects);
+				m_objectCount = m_tracker.process(frameBGR, m_Objects); // All detected objects
+				m_alertCount = m_tracker.getAlertObjectsCount(); // Alert objects - all exceeds maxAllowed 
 			}
 			catch (const std::exception& err) {
 				LOGGER::log(DLEVEL::ERROR1, "Error algProcess main process (convert & m_tracker.process():");
@@ -301,17 +306,13 @@ CAlgoProcess::~CAlgoProcess()
 			//=======================================================================================================================================
 
 
-			//if (1) if (m_videoIndex == 0)   std::cout << "camera(0) process found " << m_objectCount << " objects \n";
-			// 
-			// -1- send the data to the server callback
-			//---------------------------------------
+			//-------------------------------------------------------------------------
+			// -1- send the data to the server callback (only if object was detected) 
+			//-------------------------------------------------------------------------
 			try {
 				if (m_callback != nullptr && m_objectCount > 0)
 				{
-					if (0) {
-						std::string logMsg = "Cam " + std::to_string(m_videoIndex) + " Detects : " + std::to_string(m_objectCount) + "objects"; // DDEBUG DDEBUG PRINT 
-						LOGGER::log(DLEVEL::INFO2, logMsg);
-					}
+					if (1) std::string logMsg = "Cam " + std::to_string(m_videoIndex) + " Detects : " + std::to_string(m_objectCount) + "objects"; // DDEBUG DDEBUG PRINT LOGGER::log(DLEVEL::INFO2, logMsg);}
 					m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
 				}
 			}
@@ -328,7 +329,7 @@ CAlgoProcess::~CAlgoProcess()
 			{
 				CCycle info;
 				info.detections = m_objectCount;
-				info.alert = 0;
+				info.alerts = m_alertCount;
 				info.camID = m_videoIndex;
 				info.activeCamera = 0;
 				info.motion = m_objectCount > 0 ? 1 : 0;
@@ -341,10 +342,6 @@ CAlgoProcess::~CAlgoProcess()
 
 			frameCount++;
 		} // while !terminate
-
-
-		// termination()...
-		//Sleep(20); // DDEBUG DDEBUG 
 
 		return m_frameNum > 0;
 
