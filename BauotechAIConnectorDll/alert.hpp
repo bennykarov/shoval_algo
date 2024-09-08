@@ -8,6 +8,17 @@
 * 
  --------------------------------------------------------------------------------------------------------------*/
 
+/* From 24: 
+_OnlyMoving = 0,
+_MotionOrNot = 1,
+_OnlyStatics = 2,
+*/
+
+enum MotionType {
+	OnlyMoving	= 0,
+	MotionOrNot = 1,
+	OnlyStatics	= 2
+};
 
 class CAlert {
 public:
@@ -38,7 +49,7 @@ public:
 	std::vector<cv::Point > m_polyPoints;
 	//std::tuple <int,int> label_allowed;
 	int m_label;
-	int m_motionType; // 0 - all, 1 = moving only , 2=static only
+	int m_motionType; 
 	int m_maxAllowed = -1;
 	cv::Rect  m_bbox;
 

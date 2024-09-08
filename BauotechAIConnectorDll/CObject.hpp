@@ -38,6 +38,7 @@ enum Labels
 	bird,
 	cat,
 	dog,
+	remote = 67, // DDEBUG 
 	unknown = 9999
 };
 
@@ -88,7 +89,7 @@ public:
 	int				m_frameNum;
 	int				m_moving; // pixel distance
 	int				m_age = 0;
-	float			m_confidance = 0;
+	float			m_confidence = 0;
 
 private:
 };

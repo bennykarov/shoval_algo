@@ -52,10 +52,8 @@ int CAlert::Siren(std::vector <CObject> objects)
 * Check if object is of the right label & motion 
     and 
     inside the  polygon area
-    motionType = 0 : Ignore motion
-    motionType = 1 : Only moving objects
-    motionType = 2 : Only static objects
-
+    and
+    motion type match 
 ---------------------------------------------------------------------------------*/
 std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
 {
@@ -66,7 +64,7 @@ std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
 
 	for (auto obj : objects) {
         if (obj.m_label == m_label && 
-            (m_motionType == 0 || (m_motionType == 1 && obj.m_moving > 0) || (m_motionType == 2 && obj.m_moving == 0)) &&
+            (m_motionType == MotionType::MotionOrNot || (m_motionType == MotionType::OnlyMoving && obj.m_moving > 0) || (m_motionType == MotionType::OnlyStatics && obj.m_moving <= 0)) &&
             cv::pointPolygonTest(m_polyPoints, obj.center(), false) > 0)
             selected.push_back(obj);
         //else   bool debug = cv::pointPolygonTest(m_polyPoints, obj.center(), false);

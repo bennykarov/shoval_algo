@@ -9,6 +9,14 @@
 #define MAX_VIDEOS     101
 
 #pragma pack(push, 1) 
+
+enum _MotionType {
+	_OnlyMoving = 0,
+	_MotionOrNot = 1,
+	_OnlyStatics = 2,
+};
+
+
 typedef struct ALGO_DETECTION_OBJECT_DATA
 {
 	int X;

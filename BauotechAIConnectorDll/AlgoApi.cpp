@@ -74,7 +74,7 @@ API_EXPORT void BauotechAlgoConnector_Init()
 
 
 	if (runloadBalancer)
-		g_loadBalancer.init();
+		g_loadBalancer.init(LB_SCHEME::V301);
 	else
 		LOGGER::log(DLEVEL::WARNING1, " RUNNIG  W I T H O U T  LOAD BALANCER  !!!!!");
 
