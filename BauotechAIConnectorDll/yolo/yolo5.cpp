@@ -64,7 +64,7 @@ bool CYolo5::load_net(bool is_cuda)
         std::cout << "Attempty to use CUDA\n";
         result.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
         result.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA_FP16);// Note the FP16 !!!
-        //result.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);// Note the FP16 !!!
+        //result.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
     }
     else {
         std::cout << "Running on CPU\n";
@@ -81,10 +81,10 @@ bool CYolo5::load_net(bool is_cuda)
 const float YOLO_INPUT_WIDTH = 640.0;
 const float YOLO_INPUT_HEIGHT = 640.0;
 */
-const float SCORE_THRESHOLD = 0.2;
-const float NMS_THRESHOLD = 0.4;
-const float CONFIDENCE_THRESHOLD = 0.2; // 0.4;
 
+const float SCORE_THRESHOLD = 0.2;
+//const float NMS_THRESHOLD = 0.4;
+const float CONFIDENCE_THRESHOLD = 0.2; // 0.4;
 
 cv::Mat CYolo5::format_yolov5(const cv::Mat &source) {
     int col = source.cols;
@@ -120,7 +120,7 @@ void CYolo5::detect(cv::Mat &image, std::vector<YDetection> &output)
 
     auto input_image = format_yolov5(image);
     
-    cv::dnn::blobFromImage(input_image, blob, 1./255., cv::Size(YOLO5_INPUT_WIDTH, YOLO5_INPUT_HEIGHT), cv::Scalar(), true, false);
+    cv::dnn::blobFromImage(input_image, blob, 1./255., cv::Size(YOLO_INPUT_WIDTH, YOLO_INPUT_HEIGHT), cv::Scalar(), true, false);
     m_net.setInput(blob);
     std::vector<cv::Mat> outputs;
     m_net.forward(outputs, m_net.getUnconnectedOutLayersNames());
@@ -154,8 +154,8 @@ void CYolo5::detect(cv::Mat &image, std::vector<YDetection> &output)
 
     float *data = (float *)outputs[0].data;
 
-    float x_factor = input_image.cols / YOLO5_INPUT_WIDTH;
-    float y_factor = input_image.rows / YOLO5_INPUT_HEIGHT;
+    float x_factor = input_image.cols / YOLO_INPUT_WIDTH;
+    float y_factor = input_image.rows / YOLO_INPUT_HEIGHT;
 
     
     std::vector<int> class_ids;
