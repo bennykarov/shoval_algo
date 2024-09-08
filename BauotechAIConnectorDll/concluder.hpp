@@ -12,19 +12,51 @@ namespace CONCLUDER_CONSTANTS
 	const int MAX_MOTION_PER_FRAME = 20;//  10;
 	const int GOOD_TRACKING_LEN = 20;
 	const int INHERIT_LABEL_LEN  = 30 * 1; //  1 sec
-	const int KEEP_HIDDEN_FRAMES = 30*2;
-	const int MAX_YOLO_HIDDEN_FRAMES = int(KEEP_HIDDEN_FRAMES/2);
-	const int MAX_SIREN_HIDDEN_FRAMES = 3;
+	const int KEEP_HIDDEN_FRAMES = 15; // DDEBUG DDEBUG 5 60;
+	//const int MAX_YOLO_HIDDEN_FRAMES = int(KEEP_HIDDEN_FRAMES/2);
+	const int MAX_SIREN_HIDDEN_FRAMES = 8; // 3;
 	// YOLO related const:
 	const int MIN_STDDEV_FOR_BOX = 20; // min color variation (contrast) rquired in detection image
 	const float MIN_BOX_RATION_FOR_PERSON = 0.8; // Person box should be nerrow (far from square)
-	const float HIGH_YOLO_CONFIDANCE = 0.9; // Person box should be nerrow (far from square)
+	const float HIGH_YOLO_CONFIDENCE = 0.9; // Person box should be nerrow (far from square)
 	const int   MIN_OBJECT_SIDE_SIZE = 20; // Object box width or height (the bigger of the two)
 
 	//const int MIN_STABLE_DETECTION_FRAMES = 7;
 	const int MIN_STABLE_DETECTION_FRAMES = 3; // 1 for load balancer where framerate is LOW ;
-
+	const int MIN_STABLE_STATIC_FRAMES = 15; // 30;
 }
+
+using namespace CONCLUDER_CONSTANTS;
+
+inline bool isStableStaticObj(CObject obj)
+{
+	return obj.m_moving < MIN_STABLE_STATIC_FRAMES;
+}
+
+// Keep static object longer 
+// Note that static_len (m_moving) count backward (negative)
+inline int GET_KEEP_HIDDEN_FRAMES(int static_len)
+{
+	return static_len > -MIN_STABLE_STATIC_FRAMES ? KEEP_HIDDEN_FRAMES : KEEP_HIDDEN_FRAMES * 5;
+	/*
+	if (static_len > -MIN_STABLE_STATIC_FRAMES)
+		return KEEP_HIDDEN_FRAMES;
+	else
+		return KEEP_HIDDEN_FRAMES * 5; // stable static 
+	*/
+}
+
+inline float GET_YOLO_CONFIDENCE_THRESHOLD(bool staticObj)
+{
+	return staticObj ? YOLO_CONFIDENCE_MIN_THRESHOLD : YOLO_CONFIDENCE_THRESHOLD;
+	/*
+	if (staticObj)
+		return YOLO_CONFIDENCE_MIN_THRESHOLD;
+	else
+		return  YOLO_CONFIDENCE_THRESHOLD;
+	*/
+}
+
 
 cv::Point2f center(cv::Rect r);
 
@@ -74,12 +106,12 @@ public:
 
 	int Siren();
 
-	std::vector <CObject> getSirenObjects(float scale = 1., cv::Mat* frame = nullptr);
-	//std::vector <CObject> getNewSirenObjects(float scale = 1.);
+	std::vector <CObject> getDetectedbjects(float scale = 1., cv::Mat* frame = nullptr);
 
 	std::vector <int> getIDStoPrune() { return m_pruneObjIDs; }
-	//std::vector <int> getIDStoRenew() { return m_renewObjIDs; }
 	std::vector <CObject> getTrkObjsToRenew();
+	int getAlertObjectsNum() {  return m_alertObjects.size(); }
+	std::vector <CObject>  getAlertObjects() { return m_alertObjects; }
 
 private:
 	std::vector <int>  findDuplicated(std::vector <cv::Rect> trackerBoxes, std::vector <cv::Rect> yoloBoxes);
@@ -96,14 +128,13 @@ private:
 private:
 	int match(std::vector <cv::Rect>);
 	int match(std::vector <YDetection> detecions);
-	//int bestMatch(YDetection Yobj);
 	int bestMatch(cv::Rect r, float overlappedRatio, std::vector <int> ignore= std::vector <int>(), int frameNum = -1);
-	//CObject   consolidateObj_(std::vector <CObject> objectList);
 	CObject   consolidateObj(std::vector <CObject> &objectList);
 	int    calcFinalLable(std::vector <CObject> obj);
 	int		  pruneObjects();
 	std::vector <Labels>   getActiveLabels();
-	float stableConfidance(std::vector <CObject> obj);
+	float stableConfidence(std::vector <CObject> obj);
+	std::vector <CObject> m_alertObjects; // Detected objects that EXCEEDS the maxAllowed threshold 
 
 private:
 
@@ -113,15 +144,12 @@ private:
 
 	std::vector <std::vector <CObject>> m_objects;
 	std::vector <CObject> m_detectedObjects;
-	//std::vector <CObject> m_personObjects;
-	//std::vector <CObject> m_otherObjects;
 
 	int m_idCounter = 0;
 	bool m_active = false;
 	cv::Size m_maxPresonDim = cv::Size(150, 200); // DDEBUG CONST 
 	cv::Size m_maxObjectDim = cv::Size(350, 350); // DDEBUG CONST 
 	cv::Size m_imgDim;
-	//cv::Mat *m_framePtr;
 	int m_frameNum;
 	int m_debugLevel = 0;
 	std::vector <int> m_pruneObjIDs; // keep id to prune for Tracker 

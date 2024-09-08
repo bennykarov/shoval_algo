@@ -1,6 +1,6 @@
 #include <stdio.h>
-#include <vector>
 #include <algorithm>
+#include <vector>
 #include <numeric>
 
 #include "opencv2/opencv.hpp"
@@ -15,6 +15,8 @@
 #include "concluder.hpp"
 
 
+
+using namespace CONCLUDER_CONSTANTS;
 
 void CDecipher::init(cv::Size imgDim, int debugLevel) { m_imgDim  = imgDim;  m_debugLevel = debugLevel; 	m_active = true; }
 
@@ -114,12 +116,21 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 	//----------------------------------------------------
 	for (auto Yobj : YoloOutput) {
 		
+
 		if (std::find(activeLabels.begin(), activeLabels.end(),  (Labels)Yobj.class_id) == activeLabels.end())
 			continue;
 
 		CObject newObj(Yobj.box, frameNum, 0, DETECT_TYPE::ML, (Labels)Yobj.class_id);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
 
-		newObj.m_confidance = Yobj.confidence;
+		newObj.m_confidence = Yobj.confidence;
+
+		// Filter specilas cases:
+		// Small object must have HIGHER Confidence 
+		const int Small_Box_Dim = 20;
+		if (Yobj.box.area() <= Small_Box_Dim * Small_Box_Dim && Yobj.confidence < YOLO_CONFIDENCE_THRESHOLD_SMALL_DIM)
+			continue;
+
+		//if (Yobj.box.width <= Small_Box_Dim && Yobj.box.height <= Small_Box_Dim)   int debug = 10;
 
 		float overLappedTreshold = 0.3; // DDEBUG CONST
 		int ind = bestMatch(Yobj.box, overLappedTreshold, matchInds);
@@ -191,7 +202,6 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 			m_objects[ind].push_back(newObj);
 			matchInds.push_back(ind);
 		}
-		//else   	int debug = 10;  // already detected by YOLO -OR- a new object (ignore)
 		
 	}
 
@@ -218,100 +228,6 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 
 }
 
-#if 0
-void CDecipher::add_(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum)
-{
-	if (!m_active)
-		return;
-
-	std::vector <int> matchInds;
-
-	m_frameNum = frameNum;
-	// Add the new BGSeg object - match to current BGSeg objects (if does)
-	// Ignore those were matched with YOLO objects 
-	//-------------------------------------------------------------------------
-	for (auto bgRect : BGSEGoutput) {
-		CObject newObj(bgRect, frameNum, 0, DETECT_TYPE::BGSeg, Labels::nonLabled);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
-		int ind = bestMatch(bgRect, 0.2);// , matchInds);
-		if (ind >= 0) {
-			newObj.m_ID = m_objects[ind].back().m_ID;
-			m_objects[ind].push_back(newObj);
-			matchInds.push_back(ind);
-		}
-		else {
-			// New object (vector of objects along time)
-			newObj.m_ID = m_UniqueID++;
-			m_objects.push_back(std::vector <CObject>());
-			m_objects.back().push_back(newObj);
-		}
-	}
-
-	// Add YOLO object - match to BGSeg objects (if does)
-	//----------------------------------------------------
-	for (auto Yobj : YoloOutput) {
-		CObject newObj(Yobj.box, frameNum, 0, DETECT_TYPE::ML, (Labels)Yobj.class_id);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
-
-		int ind = bestMatch(Yobj.box, 0.3, matchInds);
-		if (ind >= 0) {
-			newObj.m_ID = m_objects[ind].back().m_ID;
-			m_objects[ind].push_back(newObj);
-			matchInds.push_back(ind);
-		}
-		else {
-			// New object
-			newObj.m_ID = m_UniqueID++;
-			m_objects.push_back(std::vector <CObject>());
-			m_objects.back().push_back(newObj);
-		}
-
-		//m_objects.back().back().m_finalLabel = calcFinalLable(m_objects.back());
-	}
-
-
-	int rem = pruneObjects();
-
-}
-
-void CDecipher::add(std::vector <YDetection> YoloOutput, int frameNum)
-{
-	if (!m_active)
-		return;
-
-
-	//m_objects.clear(); // NEW NEW !!!
-
-	std::vector <int> matchInds;
-
-	m_frameNum = frameNum;
-	// Add the new BGSeg object - match to current BGSeg objects (if does)
-	// Ignore those were matched with YOLO objects 
-	//-------------------------------------------------------------------------
-
-	// Add YOLO object - match to BGSeg objects (if does)
-	//----------------------------------------------------
-	for (auto Yobj : YoloOutput) {
-		CObject newObj(Yobj.box, frameNum, 0, DETECT_TYPE::ML, (Labels)Yobj.class_id);  // 	CObject(cv::Rect  r, int frameNum, int id, DETECT_TYPE  detectionType, Labels label)
-
-		int ind = bestMatch(Yobj.box, 0.3, matchInds);
-		if (ind >= 0) {
-			newObj.m_ID = m_objects[ind].back().m_ID;
-			m_objects[ind].push_back(newObj);
-			matchInds.push_back(ind);
-		}
-		else {
-			// New object
-			newObj.m_ID = m_UniqueID++;
-			m_objects.push_back(std::vector <CObject>());
-			m_objects.back().push_back(newObj);
-		}
-	}
-
-
-	int rem = pruneObjects(); // remove "old "old" hidden objects 
-}
-#endif 
-
-
 /*-------------------------------------------------------------------------------
  *	Match RECT to prev RECTs in 'm_objects' list 
  * Params:
@@ -332,13 +248,25 @@ int CDecipher::bestMatch(cv::Rect box, float OverlappedThrash, std::vector <int>
 
 		//for (auto obj : m_objects[i])
 		auto obj = m_objects[i].back();
-			{
+		{
 			float overlappingRatio = bboxesBounding(obj.m_bbox, box); // most new box overlapped old box
-			int maxDistance = MIN(100, CONCLUDER_CONSTANTS::MAX_MOTION_PER_FRAME * (m_frameNum - obj.m_frameNum));
+			int maxDistance = MIN(100, MAX_MOTION_PER_FRAME * (m_frameNum - obj.m_frameNum));
 			// Check (1) overlapping ratio (2) The sizes are similars (kind of) (3) the distance is reasonable 
-			if (overlappingRatio > OverlappedThrash ||
-				(similarBox(obj.m_bbox, box, 0.6*0.6) &&  distance(obj.m_bbox, box) < maxDistance)) 
-			{
+			bool Matching;
+			// Different condition for moving and static objects:
+			// In case of static object - dont match after start moving - better treats as a new object 
+			// This done to avoid "jumping"  from one parking car to another 
+
+			if (obj.m_moving > 0 && obj.m_ID == 0)
+				int debug = 10;
+
+			if (obj.m_moving > 0)
+				Matching = (overlappingRatio > OverlappedThrash) || (similarBox(obj.m_bbox, box, 0.6 * 0.6) && distance(obj.m_bbox, box) < maxDistance);
+			else // static object 
+				Matching = (overlappingRatio > 0.8 && distance(obj.m_bbox, box) < 10);
+
+			//if (overlappingRatio > OverlappedThrash ||  (similarBox(obj.m_bbox, box, 0.6 * 0.6) && distance(obj.m_bbox, box) < maxDistance))
+			if (Matching) {
 				bestInds.push_back(i);
 				bestScores.push_back(overlappingRatio);
 			}
@@ -365,21 +293,28 @@ int CDecipher::track(int mode)
 
 	for (auto& obj : m_objects) {
 		// Remove old object
-		if ((obj.back().m_detectionType == DETECT_TYPE::Tracking && obj.back().m_confidance < TRACKER::lowScore) ||
-			getHiddenLen(obj.back()) > CONCLUDER_CONSTANTS::KEEP_HIDDEN_FRAMES ||
-			getHiddenLen(obj, DETECT_TYPE::ML) > CONCLUDER_CONSTANTS::MAX_YOLO_HIDDEN_FRAMES) {
-			// remove object
+
+		if 	(getHiddenLen(obj.back()) > GET_KEEP_HIDDEN_FRAMES(obj.back().m_moving)) {
+			// remove object later
 			m_pruneObjIDs.push_back(obj.back().m_ID);
 		}
 		else {
 			// Add object 
 			obj.back().m_age = obj.size(); // update age 
 			m_detectedObjects.push_back(obj.back());
-			m_detectedObjects.back().m_confidance = stableConfidance(obj); // calc mean confidance of the last few frames 
-			m_detectedObjects.back().m_moving = (isStatic(obj) == 0);
-			bool staticObj = isStatic(obj) > 0;
-			if (staticObj)
-				int debug = 10;
+			m_detectedObjects.back().m_confidence = stableConfidence(obj); // calc mean confidence of the last few frames 
+
+			// Set m_moving  : 1 for moving, -X for X frames of static length 
+			if (isStatic(obj) == 0)
+				obj.back().m_moving = 1;
+			else {
+				if (obj.size() > 1)
+					obj.back().m_moving = obj[obj.size() - 2].m_moving - 1; // increase (negative) count
+				else
+					obj.back().m_moving = -1;
+			}
+
+			m_detectedObjects.back().m_moving = obj.back().m_moving;
 		}
 	}
 
@@ -526,7 +461,7 @@ std::vector <int> CDecipher::getObjectsInd(int frameNum)
 
 	for (int i = 0; i< m_objects.size();i++) {
 		if (m_objects[i].back().m_frameNum == frameNum &&
-			(m_objects[i].back().m_finalLabel != Labels::nonLabled || m_objects[i].size() >= CONCLUDER_CONSTANTS::GOOD_TRACKING_LEN))
+			(m_objects[i].back().m_finalLabel != Labels::nonLabled || m_objects[i].size() >= GOOD_TRACKING_LEN))
 			goodObjectsInd.push_back(i);
 	}
 
@@ -547,27 +482,27 @@ std::vector <CObject> CDecipher::getLastLostObjects(int curFrameNum, int label)
 }
 
 /*---------------------------------------------------------------------------------
- Calc confidance over time 
- calc mean confidance of the last few frames
+ Calc confidence over time 
+ calc mean confidence of the last few frames
 *---------------------------------------------------------------------------------*/
-float CDecipher::stableConfidance(std::vector <CObject> obj)
+float CDecipher::stableConfidence(std::vector <CObject> obj)
 {
-	if (obj.size() < CONCLUDER_CONSTANTS::MIN_STABLE_DETECTION_FRAMES)
+	if (obj.size() < MIN_STABLE_DETECTION_FRAMES)
 		return 0;
 
-	// Give advantage to elders objects - provide the best confidance of last detections 
-	if (obj.size() > CONCLUDER_CONSTANTS::MIN_STABLE_DETECTION_FRAMES * 3) { // DDEBUG CONST 
-		auto it = std::max_element(obj.begin(),obj.end(), [](const CObject& a, const CObject& b) { return a.m_confidance < b.m_confidance; });
-		return it->m_confidance;
+	// Give advantage to elders objects - provide the best confidence of last detections 
+	if (obj.size() > MIN_STABLE_DETECTION_FRAMES * 3) { // DDEBUG CONST 
+		auto it = std::max_element(obj.begin(),obj.end(), [](const CObject& a, const CObject& b) { return a.m_confidence < b.m_confidence; });
+		return it->m_confidence;
 	}
 
 
 	float confAvg = 0;
-	for (int i = obj.size() - CONCLUDER_CONSTANTS::MIN_STABLE_DETECTION_FRAMES; i < obj.size(); i++) {
-		confAvg += obj[i].m_confidance;
+	for (int i = obj.size() - MIN_STABLE_DETECTION_FRAMES; i < obj.size(); i++) {
+		confAvg += obj[i].m_confidence;
 	}
 
-	confAvg /= CONCLUDER_CONSTANTS::MIN_STABLE_DETECTION_FRAMES;
+	confAvg /= (float)MIN_STABLE_DETECTION_FRAMES;
 	return confAvg;
 
 }
@@ -608,20 +543,6 @@ bool CDecipher::isMoving(std::vector <CObject> obj)
 	return false;
 }
 
-bool CDecipher::isStatic_OLD(std::vector <CObject> obj)
-{
-	const int MIN_LEN = 7;  // in frames 
-	const int TOLERANCE = 7;
-
-	if (obj.size() < MIN_LEN)
-		return false;
-
-	int dist = distance(centerOf(obj.back().m_bbox), centerOf(obj[obj.size() - MIN_LEN - 1].m_bbox));
-	if (dist > TOLERANCE)
-		return false;
-
-	return false;
-}
 
 /*------------------------------------------------------------------------------------------
 * Check if object is static :
@@ -633,27 +554,98 @@ bool CDecipher::isStatic_OLD(std::vector <CObject> obj)
  *------------------------------------------------------------------------------------------*/
 int CDecipher::isStatic(std::vector <CObject> obj)
 {
-	int INSPECTED_LEN = 3 * CONSTANTS::FPS;
-	float MIN_OVERLAPPING_RATIO = 0.9;
-	int MIN_STATIC_DIST = int(obj.back().m_bbox.size().width / 10);
+	int MinLen = 3;
+	int MinStatisticsPointsLen = 2;
+	int INSPECTED_SECONDS = 2;
+	int INSPECTED_LEN = INSPECTED_SECONDS * CONSTANTS::FPS; // in frames
+	float MIN_OVERLAPPING_RATIO = 0.8;
 
-	if (obj.size() < 2)
+	// Default is moving  here 
+	if (obj.size() < MinLen)
 		return 0;
 
+	// 'Structure' keeps indices, centers and areas of detection vecs
+	std::vector <int> indices;
+	std::vector <cv::Point2f> centers;
+	std::vector <float>  areas;
 
-	int start = obj.size() - 1;
-	int end = MAX(int(obj.size() - INSPECTED_LEN), 0);
 
-	for (int i = start; i > end;  i--) {
-		if (OverlappingRatio(cv::Rect2f(obj[i].m_bbox), cv::Rect2f(obj[i - 1].m_bbox)) < MIN_OVERLAPPING_RATIO)
-			return 0;
+	int start = MAX(int(obj.size() - INSPECTED_LEN), 0);
+	//int end = obj.size();
 
-		if (distance(obj[i].m_bbox, obj[i-1].m_bbox) > MIN_STATIC_DIST)
-			return 0;
+	for (int i = start; i <  obj.size(); i++) {
+		cv::Point center = (obj[i].m_bbox.br() + obj[i].m_bbox.tl()) * 0.5;
+		indices.push_back(i);
+		centers.push_back(center);
+		areas.push_back(obj[i].m_bbox.area());
 	}
 
-	return start - end;
+	//---------------------------------
+	// Check positions (centers) diff
+	//---------------------------------
+
+	cv::Point2f massCenter;
+
+	auto centersToSort = centers; // dont ruin the original indices 
+	std::sort(centersToSort.begin(), centersToSort.end(), [](const cv::Point2f p1, const cv::Point2f p2) -> bool { return p1.x < p2.x; });
+	massCenter.x = centersToSort[int(centersToSort.size() / 2)].x;
+	std::sort(centersToSort.begin(), centersToSort.end(), [](const cv::Point2f p1, const cv::Point2f p2) -> bool { return p1.y < p2.y; });
+	massCenter.y = centersToSort[int(centersToSort.size() / 2)].y;
+
+	// MIN_STATIC_DIST is the distance from the Median location,
+	// When obj.size > 10, we allowed large step 
+	// Mark outliers (ind = -1)
+	int MIN_STATIC_DIST = int(obj.back().m_bbox.size().width / 10);
+	if (obj.size() > 10)
+		MIN_STATIC_DIST *= 2;
+	for (int i = 0; i < centers.size();i++) {
+		float debug = distance(massCenter, centers[i]);
+		if (distance(massCenter, centers[i]) > (float)MIN_STATIC_DIST)
+			indices[i] = -1;// mark as outlier
+	}
+
+	int staticCount = std::count_if(indices.begin(), indices.end(), [](int i) { return i >= 0; });
+	// Quit if too few static points 
+	if (staticCount < MinStatisticsPointsLen)
+		return 0;
+	//----------------------
+	// Check Areas diff
+	//----------------------
+
+	float areaMedian = findMedian(areas);
+ 
+	for (int i = 0; i < indices.size(); i++) {
+		if (indices[i] >= 0)
+			if (UTILS::ratio(areaMedian, areas[i]) <  (float)MIN_OVERLAPPING_RATIO)
+				indices[i] = -1;// mark as bad
+	}
+
+
+	staticCount = std::count_if(indices.begin(), indices.end(), [](int i) { return i >= 0; });
+	// Quit if too few static points 
+	if (staticCount < MinStatisticsPointsLen)
+		return 0;
+
+	// -1- check majority of static points (3/4 at least)
+	if (staticCount < int((float)indices.size() * 0.75))
+		return 0;
+
+	auto it = std::find_if(indices.begin(), indices.end(), [](int i) { return 1 > -1;  });
+	int firstInd = std::distance(indices.begin(), it);
+	auto it2 = std::find_if(indices.rbegin(), indices.rend(), [](int i) { return 1 > -1;  });
+	int lastInd = std::distance(it2, indices.rend()-1);
+
+	// -2- check statics points spred nicely along the inspected area (period)
+	int dist = lastInd - firstInd;
+	if (dist < int((float)indices.size() / 2.))
+		return 0;
+	
+
+	// Retun number of "good" points (excluded outliers)
+	return 	staticCount;
+
 }
+
 
 inline bool CDecipher::isLarge(std::vector <CObject> obj)
 {
@@ -683,15 +675,6 @@ int CDecipher::pruneObjects()
 	for (auto ind : prunedInds) {
 		m_objects.erase(m_objects.begin() + ind);
 	}
-#if 0
-	// Remove un-detected objects (fade)
-	for (int i = 0; i < m_objects.size(); i++) {
-		if (m_frameNum - m_objects[i].back().m_frameNum > hiddenLen) {
-			m_objects.erase(m_objects.begin() + i--);
-		}
-	}
-#endif
-	// Remove tracker long tracking w\o YOLO confirmation:
 
 	return orgSize - m_objects.size();
 }
@@ -704,40 +687,43 @@ int CDecipher::numberOfPersonsOnBoard()
 	return getPersonObjects(m_frameNum).size();
 }
 
-/*-------------------------------------------------------------------
-* Selects "illegal" (alert)  objects from ALL detected objects
--------------------------------------------------------------------*/
-std::vector <CObject> CDecipher::getSirenObjects(float scale, cv::Mat *frameImg)
+/*--------------------------------------------------------------------------------
+* Selects all detected object
+* The AI DLL returns ALL detected objects, regardless the maxAllowed parameter
+* The filtered Alert object are stores within the m_alertObjects;
+* This function also calc the 'm_alertObjects' when ever called to 'getDetectedbjects'
+----------------------------------------------------------------------------------*/
+std::vector <CObject> CDecipher::getDetectedbjects(float scale, cv::Mat *frameImg)
 {
 	bool OnlyStaticObject = true; 
+	m_alertObjects.clear();
 
-	std::vector <CObject> scaledDetectedObjects, sirenObjects;
+	std::vector <CObject> scaledDetectedObjects, detectedObjects;
 
 	// Scale back to origin dimensions is required
 	for (auto obj : m_detectedObjects) {
-		if (obj.m_confidance >= YOLO_SCORE_THRESHOLD && getHiddenLen(obj) <= CONCLUDER_CONSTANTS::MAX_SIREN_HIDDEN_FRAMES) { // Allow only fresh detected objects
+		int MAX_HIDDEN_FRAME = obj.m_moving > 0 ? MAX_SIREN_HIDDEN_FRAMES : MAX_SIREN_HIDDEN_FRAMES * 10;
+		if (obj.m_confidence >= GET_YOLO_CONFIDENCE_THRESHOLD(obj.m_moving <= 0) && getHiddenLen(obj) <= MAX_HIDDEN_FRAME) { // Allow only fresh detected objects
 			scaledDetectedObjects.push_back(obj);
 			scaledDetectedObjects.back().m_bbox = UTILS::scaleBBox(obj.m_bbox, scale);
 		}
-		if (obj.m_confidance < YOLO_SCORE_THRESHOLD)
-			int debug = 10;
 	}
 
 	for (auto alert : m_alerts) {
-		std::vector <CObject> sirenSingleCam =  alert.selectObjects(scaledDetectedObjects);		
-
-
-		for (auto obj : sirenSingleCam) {
+		std::vector <CObject> detectionSinglePloy =  alert.selectObjects(scaledDetectedObjects);		
+		
+		// Filter out  'suspectedAsFalse' objects
+		for (auto obj : detectionSinglePloy) {
 			if (!suspectedAsFalse(obj, Labels(alert.m_label), frameImg))
-				sirenObjects.push_back(obj);
-
-			//if (OnlyStaticObject) {  if (isStatic(obj) > 10
+				detectedObjects.push_back(obj);
 		}
-		//sirenObjects.insert(sirenObjects.end(), sirenSingleCam.begin(), sirenSingleCam.end());
+
+		if (detectedObjects.size() > alert.m_maxAllowed)
+			m_alertObjects.insert(m_alertObjects.end(), detectedObjects.begin(), detectedObjects.end()); // gather all camera's alerts into one vector
 	}
 
 
-	return sirenObjects;
+	return detectedObjects;
 }
 
 
@@ -746,7 +732,7 @@ std::vector <CObject> CDecipher::getSirenObjects(float scale, cv::Mat *frameImg)
 * Yolo has false alarams, guess if this is the case by:
 * (1) Box touch the frame edges
 * (2) Contrast is low
-* [ (3) Not excelence confidance score ]
+* [ (3) Not excelence confidence score ]
 -----------------------------------------------------------------------------*/
 bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameImg)
 {
@@ -757,13 +743,14 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 		return false;
 
 	// Ignore too small object
-	int maxDim = max(obj.m_bbox.width, obj.m_bbox.height);
-	if (maxDim < CONCLUDER_CONSTANTS::MIN_OBJECT_SIDE_SIZE)
-		return true;
-
+	if (0) { // DDEBUG DDEBUG REMOVED for drone test
+		int maxDim = max(obj.m_bbox.width, obj.m_bbox.height);
+		if (maxDim < MIN_OBJECT_SIDE_SIZE)
+			return true;
+	}
 
 	// Dont check high score detection
-	if (obj.m_confidance > CONCLUDER_CONSTANTS::HIGH_YOLO_CONFIDANCE)
+	if (obj.m_confidence > HIGH_YOLO_CONFIDENCE)
 		return false;
 
 
@@ -773,7 +760,7 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 	if (touchEdge) {
 		// box touch one of the the edge
 		float ratio = float(obj.m_bbox.width) / float(obj.m_bbox.height);
-		bool fatDimension = (ratio > CONCLUDER_CONSTANTS::MIN_BOX_RATION_FOR_PERSON && ratio < (1. / CONCLUDER_CONSTANTS::MIN_BOX_RATION_FOR_PERSON));  // person usually has a nerrow dimensions
+		bool fatDimension = (ratio > MIN_BOX_RATION_FOR_PERSON && ratio < (1. / MIN_BOX_RATION_FOR_PERSON));  // person usually has a nerrow dimensions
 
 		if (fatDimension) {
 			double minVal;
@@ -800,7 +787,7 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 			cv::meanStdDev(grayImg(obj.m_bbox), mean, stddev);
 
 
-			bool lowCOntrast = (stddev.val[0] < CONCLUDER_CONSTANTS::MIN_STDDEV_FOR_BOX); // Low variation gray levels in box
+			bool lowCOntrast = (stddev.val[0] < MIN_STDDEV_FOR_BOX); // Low variation gray levels in box
 
 			if (lowCOntrast) {
 				LOGGER::log(DLEVEL::ERROR2, "Person detection suspected as FALSE , in frame = " + std::to_string(m_frameNum));
