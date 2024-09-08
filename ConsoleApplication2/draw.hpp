@@ -37,6 +37,13 @@ public:
 };
 
 
-int draw(int height, int width, char* pData, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, std::vector <CAlert> g_cameraInfos, int framenum, float scale_, bool invertImg);
-void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale);
+class CDISPLAY {
+public:
+	int draw(int height, int width, char* pData, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, std::vector <CAlert> g_cameraInfos, int framenum, float scale_, bool invertImg);
+	int draw(cv::Mat frame, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, std::vector <CAlert> g_cameraInfos, int framenum, float scale_, bool invertImg);
+	void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale);
+private:
+	void drawInfo(cv::Mat& img, CAlert camInfo);
+	void drawInfo(cv::Mat& img, std::vector <CAlert> camsInfo);
 
+};

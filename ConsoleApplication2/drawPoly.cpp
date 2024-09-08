@@ -18,23 +18,6 @@
 #pragma comment(lib, "opencv_imgproc470.lib")
 #endif
 
-/*
-
-#include <iostream>
-#include <thread>        
-#include "opencv2/opencv.hpp"
-#include "opencv2/core/core.hpp"
-
-#include "utils.hpp"
-#include "../BauotechAIConnectorDll/files.hpp"
-#include "../BauotechAIConnectorDll/AlgoApi.h"
-#include "../BauotechAIConnectorDll/config.hpp"
-#include "../BauotechAIConnectorDll/timer.hpp"
-*/
-
-
-
-
 
 
 #include <opencv2/opencv.hpp>
@@ -42,10 +25,29 @@
 //#include <filesystem>
 #include <iostream>
 #include <fstream>
+#include <conio.h>
 
     // Global variables
     std::vector<cv::Point> vertices;
     cv::Mat image;
+
+    std::string WINDOW_NAME = "draw-polygon";
+
+
+    std::string change_extension(const std::string& filename, const std::string& extension)
+    {
+        char path[_MAX_PATH];
+        char drive[_MAX_DRIVE];
+        char dir[_MAX_DIR];
+        char fname[_MAX_FNAME];
+        char ext[_MAX_EXT];
+
+        _splitpath_s(filename.c_str(), drive, dir, fname, ext);
+        _makepath_s(path, drive, dir, fname, extension.c_str());
+
+        return path;
+    }
+
 
     // Mouse callback function
     void onMouse(int event, int x, int y, int flags, void* userdata) {
@@ -57,7 +59,7 @@
             cv::circle(image, cv::Point(x, y), 8, cv::Scalar(255, 0, 0), -1);
 
             // Display the updated image
-            cv::imshow("Image", image);
+            cv::imshow(WINDOW_NAME, image);
         }
         else if (event == cv::EVENT_RBUTTONDOWN) {
             // Right mouse button click - close the polygon and fill it
@@ -86,6 +88,7 @@
 		    "camID": 0,
 		    "detection-type": "car",
 		    "max-allowed": 0,
+            "motionType":1
 		    "polygon": [ 460, 500, 460, 1000, 1160, 1000, 1160, 3500 ],
     	}
     ]
@@ -93,7 +96,6 @@
     bool writeCameraConfig(std::string fname, std::vector<cv::Point> vertices)
     {
         std::ofstream camfile(fname);
-        //ifstream simple("C:\\src\\ConsoleApplication1\\test.json");
 
         if (vertices.size() < 3)
             return false;
@@ -106,6 +108,7 @@
         camfile << "\t\t\"camID\": 0,\n";
         camfile << "\t\t\"detection-type\": \"car\",\n";
         camfile << "\t\t\"max-allowed\" : 0,\n";
+        camfile << "\t\t\"motionType\" : 1,\n";        
         camfile << "\t\t\"polygon\" : ["; 
         int i = 0;
         for (; i < vertices.size() - 1; i++)
@@ -125,7 +128,7 @@
     * (1) image to load
     * (2) output camera.json file  name
      ------------------------------------------------------------------------------------------------------*/
-    int main_camFileGen(int argc, char* argv[])
+    int main_drawPoly(int argc, char* argv[])
     {
         // Load the image
         std::string imageNname; //  = R"(C:\Users\scsho\Pictures\vlcsnap-2024-01-28-17h09m55s442.png)";
@@ -151,7 +154,13 @@
                 return -1;
             }
 
+            cameraNname = change_extension(imageNname, "json");
+
             cap >> image;
+
+            if (1) // many records has empty frames at start
+                for (int i=0;i<100;i++)
+                    cap >> image;
         }
         else
             image = cv::imread(imageNname);
@@ -163,18 +172,23 @@
         }
 
         // Create a window to display the image
-        cv::namedWindow("Image", cv::WINDOW_NORMAL);
+        cv::namedWindow(WINDOW_NAME, cv::WINDOW_NORMAL);
 
         // Set the mouse callback function
-        cv::setMouseCallback("Image", onMouse, nullptr);
+        cv::setMouseCallback(WINDOW_NAME, onMouse, nullptr);
 
         // Display the image
-        cv::imshow("Image", image);
+        cv::imshow(WINDOW_NAME, image);
 
         // Wait for a key press and close the window
         cv::waitKey(0);
 
-        writeCameraConfig(cameraNname, vertices);
+        if (writeCameraConfig(cameraNname, vertices))
+            std::cout << " Json file successfully save to " << cameraNname << "\n";
+        else
+            std::cout << " Error in saving Json file " << cameraNname << "\n";
+        _kbhit();
+
         cv::destroyAllWindows();
 
         return 0;
