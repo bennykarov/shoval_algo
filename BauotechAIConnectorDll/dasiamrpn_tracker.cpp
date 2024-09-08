@@ -249,11 +249,11 @@ int CSiamTracker::track(std::vector <CObject>& objects, int frameNum)
                     if (badRect) int debug = 11;
                 }
         m_objects[i].m_bbox = scaleBBox_(m_scaledBbox, 1. / m_scale);
-        m_objects[i].m_confidance = m_oks[i] ? m_tracker[i]->getTrackingScore() : 0;
+        m_objects[i].m_confidence = m_oks[i] ? m_tracker[i]->getTrackingScore() : 0;
         m_objects[i].m_detectionType = DETECT_TYPE::Tracking;
         m_objects[i].m_frameNum = frameNum;
 
-        m_objectsScores[i].push_back(m_objects[i].m_confidance); // ??? is needed ?
+        m_objectsScores[i].push_back(m_objects[i].m_confidence); // ??? is needed ?
     }
 
     objects.clear();

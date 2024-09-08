@@ -22,12 +22,31 @@
 
 typedef void (*CameraRequestCallback)(const uint32_t camera[], int size); // (was taking from algoApi.h)
 
+
+#define ROUND(a)   floor(a + 0.5);
 /*===========================================================================================
 * AlgoProcess (thread) class
   ===========================================================================================*/
 enum {
 	FREE = 0,
 	BUSY = 1
+};
+
+enum LB_SCHEME {
+    V0 = 0,
+    V1,
+    V2,
+    V3,
+    // simple 
+    V20,
+    V21,
+    V30,
+    V31,
+    // smooth 
+    V200,
+    V201,
+    V300,
+    V301
 };
 
 enum CAMERA_TYPE {
@@ -58,7 +77,7 @@ public:
         priority = -1;
         detections = 0;
         activeCamera = 0;
-        alert = 0;
+        alerts = 0;
         motion = 0;
     }
 
@@ -66,7 +85,7 @@ public:
     int priority = -1;
     int detections = 0;
     int activeCamera = 0;
-    int alert = 0;
+    int alerts = 0;
     int motion = 0;
     int timeStamp = 0;
 
@@ -85,20 +104,52 @@ enum AQUIRE_ERROR {
 
 class CPrioritiesLevles {
 public:
-    void init(int camsNum, int resourcesNum, float maxWait)
+    /*--------------------------------------------------------------
+     * Set 4 levels:
+     * High [3], 2nd [2], 3d [1], low [0]
+    --------------------------------------------------------------*/
+    void init(int camsNum, int resourcesNum, int topPriority)
     {
-        m_highPrio = int((float)camsNum * 2. / 3.); // DDEBUG missing m_resourceNum and maxWait number
-        int m_2ndPrio = int((m_highPrio * 3) / 4);
-        int m_3dPrio = int(m_highPrio / 2);
-        int m_lowPrio = 0;
+        float fPrior;
+
+        if (camsNum <= 0 || resourcesNum <= 0)
+            return;
+
+        // [0] (lowest)
+        m_priorities.push_back(0); 
+        // [1] 1/3
+        fPrior = (float)topPriority / 3.;
+        fPrior = floor(fPrior + 0.5);
+        m_priorities.push_back(int(fPrior));
+        // [2] 2/3
+        fPrior = (float)topPriority * 2. / 3.;
+        fPrior = floor(fPrior + 0.5);
+        m_priorities.push_back(int(fPrior));
+        // [3] higest
+        m_priorities.push_back(topPriority);
 
     }
+
+    // Return the priority for queue
+    // In range of 0..3 (see init()
+    //---------------------------------
+    int get(int prior)
+    {
+        if (prior < 0 || prior > 3)
+            return 0;
+            
+        return m_priorities[prior];
+    }
+
+
     // scheme V2
+    std::vector <int> m_priorities;
+
     int m_highPrio = 30; // 100;
     int m_2ndPrio = int((m_highPrio * 3) / 4);
     int m_3dPrio = int(m_highPrio / 2);
     int m_lowPrio = 0;
-
+    int m_MidPrio = 1;
 };
 
 class CResourceRange {
@@ -121,7 +172,7 @@ class CLoadBalaner  {
 public:
     
     bool isActive() { return m_active; }
-    int init();
+    int init(LB_SCHEME scheme = LB_SCHEME::V301);
     void stop() 
     {
             m_terminate = true;
@@ -154,7 +205,8 @@ public:
 
 private:
 
-    void updatePCResource(int camerasNum);// { return CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE; }
+    //void updatePCResource(int camerasNum);// { return CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE; }
+    void tuneQueueParams(int camerasNum);// { return CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE; }
     void set(int camID, int proir);
     
     int getDebugLevel() { return m_debugLevel;  } // for algoAPI 
@@ -165,8 +217,23 @@ private:
         return max(0, overflow); // 'overflow' can be negative
     }
 
-    int calcPriority(int motion, int detections, int alert, int observed);
+    int calcPriority(int motion, int detections, int alerts, int observed);
+    int calcPriority_V0(int motion, int detections, int alert, int observed);
+    int calcPriority_V1(int motion, int detections, int alert, int observed);
     int calcPriority_V2(int motion, int detections, int alert, int observed);
+    int calcPriority_V3(int motion, int detections, int alert, int observed);
+    // New and simpler scheme 
+    // Prefere with detection cams
+    int calcPriority_V20(int motion, int detections, int alert, int observed);
+    int calcPriority_V21(int motion, int detections, int alert, int observed);
+    // Prefere without detection cams
+    int calcPriority_V30(int motion, int detections, int alert, int observed);
+    int calcPriority_V31(int motion, int detections, int alert, int observed);
+    // smooth 
+    int calcPriority_V200(int motion, int detections, int alert, int observed);
+    int calcPriority_V201(int motion, int detections, int alert, int observed);
+    int calcPriority_V300(int motion, int detections, int alert, int observed);
+    int calcPriority_V301(int motion, int detections, int alert, int observed);
 
     void setPrior(CCycle info);
 
@@ -185,27 +252,28 @@ public:
     CSemaphore m_resourceBouncer;
 
 private:
-    int convertToQueuePriority_V1(int priority);
-    int convertToQueuePriority_V2(int priority);
+    //int convertToQueuePriority_V1(int priority);
+    int convertToQueuePriority_simple(int priority);
+    int convertToQueuePriority(int priority);
 
 private:
     std::vector <int>   m_cameraBatchList; // list sent to server 
     std::vector <int>   m_cameraBatchList_prev; // list sent to server 
-    std::vector <int>   m_camInProcess; // cameras actually in process
+    std::vector <int>   m_camsProcessed; // cameras had been process (return in resQueue)
     //std::vector <int>   m_camInQueue; // cameras actually in process
     std::vector <int>   m_camType; // cameras type
     std::vector <int>   m_camPriority_Debug; // cameras type
     //std::vector <CCycle>  
     boost::circular_buffer<CCycle>   m_logBatchQueue;
-    int m_debugLevel = 3; // DDEBUG CONST 
+    int m_debugLevel = 1; // DDEBUG CONST 
     int m_cycleCounter = 0; // batch counter 
     std::vector <CResourceRange>   m_resourcesRange;
+    LB_SCHEME   m_scheme = LB_SCHEME::V0;
 
-#if 0
-    better_priority_queue::updatable_priority_queue<int, int> m_priorityQueue;
-#else
+    int m_topPriority = 10; // queue scale , from 0 .. 10
+    int m_beatStep;       // beat increase step for cams in queue 
+
     CPriority_queue m_priorityQueue;
-#endif 
 
 
     bool m_active = false;
@@ -218,20 +286,7 @@ private:
     bool m_startProcess = false; // stream start =  run3() was called 
     bool m_terminate = false;
 
-    // QUEUE PRIORITIES:
-    // scheme V1
-    int m_topPriority = 1;
-    int m_thirdPriority = 0;
-    int m_2thirdPriority = 0;
-    int m_lowPriority = 0;
-
-    // scheme V2
-    /*
-    int m_highPrio = 100;
-    int m_2ndPrio = int((m_highPrio*3)/4);
-    int m_3dPrio = int(m_highPrio / 2);
-    int m_lowPrio = 0;
-    */
+    int m_actualTopPriority; // actual in curent queue 
     CPrioritiesLevles m_priorities;
 
     int m_bestResourceNum = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
