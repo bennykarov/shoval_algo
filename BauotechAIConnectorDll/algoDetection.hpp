@@ -48,6 +48,8 @@ public:
 	int process(void* dataTemp, ALGO_DETECTION_OBJECT_DATA* pObjects);
 	int process(cv::Mat frame, ALGO_DETECTION_OBJECT_DATA* pObjects);
 	int processFrame(cv::Mat &frame);
+
+	int getAlertObjectsCount() { return m_decipher.getAlertObjectsNum();  }
 	/*
 	void draw_old(cv::Mat& img, float scale);   // by Concluder (good objects)
 	void draw(cv::Mat& img, std::vector <CObject> detections, float scale);   // by Concluder (good objects)

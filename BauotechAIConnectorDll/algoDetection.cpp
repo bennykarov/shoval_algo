@@ -193,7 +193,7 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 	}
 
 #ifdef USE_CUDA
-	int checkForGPUs()
+	int _checkForGPUs()
 	{
 
 		using namespace cv::cuda;
@@ -226,7 +226,7 @@ bool readConfigFile(std::string ConfigFName, Config &conf)
 	*/
 
 #else
-	int checkForGPUs() { return 0; }
+	int _checkForGPUs() { return 0; }
 	size_t GetGraphicDeviceVRamUsage(int _NumGPU) { return size_t(0); }
 #endif 
 	void debugSaveParams(int w, int h, int imgSize, int pixelWidth, float scaleDisplay, Config params)
@@ -286,7 +286,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 	if (m_params.useGPU == 0)
 		m_isCuda = false;
 	else
-		m_isCuda = checkForGPUs() > 0;
+		m_isCuda = _checkForGPUs() > 0;
 
 	// Handle ROI and active polygons:
 	//-------------------------------
@@ -308,6 +308,9 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 	// ROI joined all bboxes of this cfamera 
 	m_camROI = setcamerasROI(m_camerasInfo);
+	if (1)
+		// Find best RIO for YOLO operation 
+		m_camROI = m_yolo.optimizeRect(m_camROI, cv::Size(m_width, m_height));
 
 	for (auto& camInf : m_camerasInfo) {
 		for (auto& point : camInf.m_polyPoints)
@@ -315,19 +318,21 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 	}
 
 	if (0) // Fix too small ROI 
-		if (m_yolo.getVersion() == 8)
+		//if (m_yolo.getVersion() == 8)
 		{
-			if (m_camROI.width < YOLO8_INPUT_WIDTH)
-				m_camROI.width = YOLO8_INPUT_WIDTH;
-			if (m_camROI.height < YOLO8_INPUT_HEIGHT)
-				m_camROI.height = YOLO8_INPUT_HEIGHT;
+			if (m_camROI.width < YOLO_INPUT_WIDTH)
+				m_camROI.width = YOLO_INPUT_WIDTH;
+			if (m_camROI.height < YOLO_INPUT_HEIGHT)
+				m_camROI.height = YOLO_INPUT_HEIGHT;
 		}
+		/*
 		else if (m_yolo.getVersion() == 5) {
 			if (m_camROI.width < YOLO5_INPUT_WIDTH)
 				m_camROI.width = YOLO5_INPUT_WIDTH;
 			if (m_camROI.height < YOLO5_INPUT_HEIGHT)
 				m_camROI.height = YOLO5_INPUT_HEIGHT;
-}
+		}
+		*/
 
 		
 	m_decipher.clear();
@@ -342,8 +347,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		if (m_params.MLType > 0)
 		{
-			if (0) /// DDEBUG
-				m_params.modelFolder = "C:/src/YOLO/yoloONNX/";
 			if (!m_yolo.init(m_params.modelFolder, m_isCuda)) {
 				std::cout << "Cant init YOLO net , quit \n";
 
@@ -422,10 +425,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		if (timeForDetection()) {
 			m_yolo.detect(frame, m_Yolotput);
 		}
-
-		for (auto obj : m_Yolotput)
-			if (obj.class_id == 2)
-				int debug = 10;
 
 		// Track:
 		//-------------------
@@ -509,10 +508,15 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 	}
 
 
-
+	/*-----------------------------------------------------------------------------------------------
+	* Main Detector function
+	* Return : number of objects detected (including all polygons and types)
+	* 
+	* 
+	 -----------------------------------------------------------------------------------------------*/
 	int CDetector::process(cv::Mat frameRaw, ALGO_DETECTION_OBJECT_DATA* pObjects)
 	{
-		std::vector <CObject>	sirenObjs;
+		std::vector <CObject>	detectedObjs;
 
 		pObjects->ObjectType = -1;
 
@@ -533,26 +537,29 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		if (m_decipher.getObjects().size() > 0) {
 
-			sirenObjs = m_decipher.getSirenObjects(1., &m_frame);
+			detectedObjs = m_decipher.getDetectedbjects(1., &m_frame);
+
+			int alertObjectsNum = m_decipher.getAlertObjectsNum();
 
 			// scale back to original image size:
-			for (auto& obj : sirenObjs) {
+			for (auto& obj : detectedObjs) {
 				obj.m_bbox = UTILS::scaleBBox(obj.m_bbox, 1. / m_params.scale);
 				obj.m_bbox.x += m_camROI.x;
 				obj.m_bbox.y += m_camROI.y;
 			}
 
 
-			for (int k = 0; k < sirenObjs.size(); k++)
-				cObject_2_pObject(sirenObjs[k], &pObjects[k]);
+			for (int k = 0; k < detectedObjs.size(); k++)
+				cObject_2_pObject(detectedObjs[k], &pObjects[k]);
 		}
 
 		m_frameNum++;
 
 
-		return sirenObjs.size();
+		return detectedObjs.size();
 	}
 
+#if 0
 	int CDetector::process(void* dataOrg, ALGO_DETECTION_OBJECT_DATA* pObjects)
 	{
 		std::vector <CObject>	sirenObjs;
@@ -598,7 +605,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		return sirenObjs.size();
 	}
-
+#endif 
 
 
 
