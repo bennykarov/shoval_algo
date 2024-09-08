@@ -52,6 +52,8 @@ struct Config
 	//int showTruck = 0;
 	int showMotion = 0;
 	int debugLevel = 0;
+	int debugLevel_LB = 0;
+
 	float displayScale = 1.;
 	// OPtimization
 	int skipMotionFrames = CONSTANTS::DEFAULT_SKIP_FRAMES_BGSEG;

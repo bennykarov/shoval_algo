@@ -271,6 +271,8 @@ bool FILE_UTILS::readConfigFile(std::string ConfigFName, Config& conf)
     conf.record = pt.get<int>("GENERAL.record", conf.record);
     conf.demoMode = pt.get<int>("GENERAL.demo", conf.demoMode);
     conf.debugLevel = pt.get<int>("GENERAL.debug", conf.debugLevel);
+    conf.debugLevel_LB = pt.get<int>("GENERAL.debug_LB", conf.debugLevel_LB);
+    
     //conf.showTruck = pt.get<int>("GENERAL.showTruck", conf.showTruck);
     conf.showMotion = pt.get<int>("GENERAL.showMotion", conf.showMotion);
     conf.camROI = to_array<int>(pt.get<std::string>("GENERAL.camROI", "0,0,0,0"));
