@@ -27,6 +27,14 @@ public:
 		return m_elapsed.count();
 	}
 
+	double  sampleFromStart()
+	{
+		m_cur_time = std::chrono::system_clock::now();
+
+		auto elapsed = m_cur_time - m_start_time;
+		return elapsed.count();
+	}
+
 	//double  durationFromStart() { return (m_cur_time - m_start_time).count() / 1000.; } 
 	void printDuration(std::string msg)
 	{
