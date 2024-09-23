@@ -125,6 +125,8 @@ extern "C" {
  
 	API_EXPORT void BauotechAlgoConnector_SetCameraRequestCallback(CameraRequestCallback callback);
 	API_EXPORT void BauotechAlgoConnector_SetCameraType(uint32_t videoIndex, uint32_t type);
+	API_EXPORT void BauotechAlgoConnector_setConsoleAPI(uint32_t videoIndex, uint8_t flag);
+	
 
 	API_EXPORT void AlgoSetTime(int hour, int min, int sec);
 
