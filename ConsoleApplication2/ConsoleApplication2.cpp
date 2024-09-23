@@ -1,6 +1,7 @@
 //============================================================================
 // ConsoleApplication2.cpp : Shoval_sc test app
 //============================================================================
+/*
 #ifdef _DEBUG
 #pragma comment(lib, "opencv_core470d.lib")
 #pragma comment(lib, "opencv_highgui470d.lib")
@@ -19,7 +20,25 @@
 #pragma comment(lib, "opencv_dnn470.lib")
 
 #endif
+*/
+#ifdef _DEBUG
+#pragma comment(lib, "opencv_core4100d.lib")
+#pragma comment(lib, "opencv_highgui4100d.lib")
+#pragma comment(lib, "opencv_video4100d.lib")
+#pragma comment(lib, "opencv_videoio4100d.lib")
+#pragma comment(lib, "opencv_imgcodecs4100d.lib")
+#pragma comment(lib, "opencv_imgproc4100d.lib")
+#pragma comment(lib, "opencv_dnn4100d.lib") // main_yoloTest()
+#else
+#pragma comment(lib, "opencv_core4100.lib")
+#pragma comment(lib, "opencv_highgui4100.lib")
+#pragma comment(lib, "opencv_video4100.lib")
+#pragma comment(lib, "opencv_videoio4100.lib")
+#pragma comment(lib, "opencv_imgcodecs4100.lib")
+#pragma comment(lib, "opencv_imgproc4100.lib")
+#pragma comment(lib, "opencv_dnn4100.lib")
 
+#endif
 
 
 #include <iostream>
@@ -51,9 +70,9 @@
 #include "yolo_.hpp" 
 #include "draw.hpp"
 
-//std::string CAMERAFNAME = "";
+std::string CAMERAFNAME = "";
 //std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\Harchava_PTZ.json)";
-std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\Harchava.json)";
+//std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\Harchava.json)";
 //std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\Spikes.json)";
 //std::string  CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\fullscreen_person_car.json)";
 //std::string  CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras1_sportech.json)";
@@ -67,15 +86,17 @@ std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\Harchava.json)";
 //std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\cameras_multiPoly.json)";
 
 
-static std::mutex     gCamRequestMtx;
+//static std::mutex     gCamRequestMtx;
 HANDLE g_hConsole;
 //int g_motionType = MotionType::OnlyMoving;
 int g_motionType = MotionType::MotionOrNot;
-int g_skip = 1;
+int g_skip = 0;
 float g_rotateImageAngle = 0.; // DDEBUG roate original image!
 
 int main_siamRPN(int argc, char** argv);
 int main_yoloTest();
+int main_yolo_opencv_sample(int argc, char** argv);
+
 
 
 
@@ -278,10 +299,19 @@ int addPolygonsAuto(std::string cameraFName, cv::Mat frame, int cameraNum, int d
 
 		char* labelsStr = (char*)labelToStr(templateCamInf.m_label); // change for debugging multiple labels 
 		int _videoIndex = templateCamInf.m_camID;
+
+		int switch_label;
+		
+		if (1) // DDEBUG SWITCH LABEL
+			switch_label = _videoIndex % 2 == 0 ? 2 : 0;
+		else
+			switch_label = templateCamInf.m_label;
+
 		BauotechAlgoConnector_AddPolygon(_videoIndex,
 			_videoIndex, //CamID,
 			polygonId++,
-			labelToStr(templateCamInf.m_label),//DetectionType,  // debugLabel,  
+			labelToStr(switch_label),//DetectionType,  // debugLabel,  
+			//labelToStr(templateCamInf.m_label),//DetectionType,  // debugLabel,  
 			templateCamInf.m_maxAllowed, // MaxAllowed,
 			&(polygonVec[0]),//Polygon,
 			templateCamInf.m_polyPoints.size() * 2,
@@ -334,16 +364,30 @@ int addPolygonsFromCameraJson(std::string cameraFName,cv::Mat frame)
 
 
 //__cdecl*
+/*-----------------------------------------------------------------------------------------
+Callback for Video Server - provide list of camera IDs to be sent
+-----------------------------------------------------------------------------------------*/
+
 void consoleCameraRequestCallback(const uint32_t *camera, int size)
 {
-	std::unique_lock<std::mutex> lock(gCamRequestMtx);
+	//std::unique_lock<std::mutex> lock(gCamRequestMtx);
+
+	//==============================================
+	if (1)  // DDEBUG DDEBUG DDEBUG DDEBUG IGNORE 
+	{
+		gVideosToRun.clear();
+		for (int i = 0; i < NumberOfVideos; i++)
+			gVideosToRun.push_back(i);
+		return;
+	}
+	//==============================================
 
 	gVideosToRun.clear();
 
 	for (int i = 0; i < size; i++)
 		gVideosToRun.push_back(camera[i]);
 
-	lock.unlock();
+	//lock.unlock();
 }
 
 
@@ -541,6 +585,9 @@ int main_SHOVAL(int argc, char* argv[])
 		else
 			BauotechAlgoConnector_Config_sync(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, invertImg, nullptr);
 
+		// set flag for working with consoleApp main():  turn getObjectData() call ON (default is OFF)
+		BauotechAlgoConnector_setConsoleAPI(_videoIndex, uint8_t(1)); 
+
 		if (0)
 		{
 			pData[_videoIndex] = (uint8_t*)malloc(image_size);
@@ -589,7 +636,7 @@ int main_SHOVAL(int argc, char* argv[])
 	while (!frame.empty()) {
 		
 		if (ASYNC)
-			Sleep(20); // DDEBUG DDEBUG simulate  RT cameras
+			Sleep(25); // DDEBUG DDEBUG simulate  RT cameras
 		
  
 		cv::Mat post_frame;
@@ -654,7 +701,7 @@ int main_SHOVAL(int argc, char* argv[])
 
 		if (!AIObjectVec.empty()) { // DDEBUG  DDEBUG DDEBUG DDEBUG - beep every detection!
 			//MessageBoxA(0, std::string("find " + std::to_string(AIObjectVec.size()) + "objects ").c_str(), "EXCEPTION!", MB_OK);
-				Beep(900, 60);
+				// Beep(900, 60);
 			int debug = 10;
 		}
 
@@ -681,9 +728,6 @@ int main_SHOVAL(int argc, char* argv[])
 
 		cap >> frame;
 		frameNum++;
-
-		if (frameNum == 40)
-			cv::waitKey(-1); // DDEBUG 
 
 
 		if (!frame.empty()) {
@@ -744,8 +788,8 @@ int main(int argc, char* argv[])
 	// you can loop k higher to see more color choices
 
 
-	return main_yoloTest();
-	//return main_SHOVAL(argc, argv);
+	//return main_yoloTest();
+	return main_SHOVAL(argc, argv);
 	//return main_siamRPN(argc, argv);
 
 	//return main_drawPoly(argc, argv);
