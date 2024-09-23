@@ -115,8 +115,8 @@ vector<Mat> pre_process(Mat& input_image, Net& net)
 
 bool CYolo8::load_net(bool is_cuda)
 {
-    auto result = cv::dnn::readNetFromONNX(m_modelFolder + YOLO_MODEL_NAME); // DDEBUG DDEBUG 
-    //auto result = cv::dnn::readNet(m_modelFolder + modelFName);
+    //auto result = cv::dnn::readNetFromONNX(m_modelFolder + YOLO_MODEL_NAME); // DDEBUG DDEBUG 
+    auto result = cv::dnn::readNet(m_modelFolder + YOLO_MODEL_NAME);
 
     if (result.empty())
         return false;
