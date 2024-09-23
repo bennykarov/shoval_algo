@@ -199,9 +199,16 @@ CAlgoProcess::~CAlgoProcess()
 
 		m_loader = loader;
 
-		loader->cameraCounter(1);
-		m_thread = std::thread(&CAlgoProcess::run_th2, this, bufQ, loader);
-		return m_thread.joinable();
+		try {
+
+			loader->cameraCounter(1);
+			m_thread = std::thread(&CAlgoProcess::run_th2, this, bufQ, loader);
+			return m_thread.joinable();
+		}
+		catch (const std::exception& err) {
+			LOGGER::g_logMsg2 << "Main process thread [CAlgoProcess::run_th2()] Crashed : " << err.what();
+			LOGGER::log(DLEVEL::ERROR1, LOGGER::g_logMsg2);
+		}
 	}
 
 
@@ -214,7 +221,7 @@ CAlgoProcess::~CAlgoProcess()
 	int CAlgoProcess::run_th2(TSBuffQueue* bufQ, CLoadBalaner* loader)
 	{
 		CframeBuffer frameBuff;
-		long frameCount = 0;
+		//long frameCount = 0;
 		float elapsedSum = 0;
 		float elapsedMin = 999999;
 		float elapsedMax = 0;
@@ -233,49 +240,49 @@ CAlgoProcess::~CAlgoProcess()
 		while (!m_terminate)
 		{
 			if (bufQ->IsEmpty()) {
-				//std::cout << "< before m_event.Wait()";
 				m_event.Wait();
-				//std::cout << "> after m_event.Wait()";
 			}
+
+
+			// 3 Leave out conditions:
+			//--------------------------
 			if (bufQ->pop(frameBuff) == false) {
 				continue;
 			}
-
-
-			if (1) // DDEBUG 
-				LOGGER::setFrameNum(m_frameNum);
 
 			if (1)
 				if (m_frameNum == frameBuff.frameNum)
 				{
 					LOGGER::log(DLEVEL::WARNING1, "run_th2 got dulpicate frame : m_frameNum == frameBuff.frameNum");
-					if (1) 
-						Beep(1200, 10);
-					//bufQ->pop(); // release buffer
+					//if (0) Beep(1200, 10);
 					continue;
 				}
 
 			m_frameNum = frameBuff.frameNum;
 
+			LOGGER::setFrameNum(m_frameNum);
+
 
 			try {
 				m_timer.sample();
 				cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
-				m_objectCount = m_tracker.process(frameBGR, m_Objects); // All detected objects
+				m_objectCount = m_tracker.process(frameBGR, m_Objects, frameBuff.frameNum); // All detected objects
 				m_alertCount = m_tracker.getAlertObjectsCount(); // Alert objects - all exceeds maxAllowed 
+
+				if (m_objectCount != m_alertCount)
+					int debug = 10;
 			}
 			catch (const std::exception& err) {
 				LOGGER::log(DLEVEL::ERROR1, "Error algProcess main process (convert & m_tracker.process():");
 				LOGGER::log(DLEVEL::ERROR1, err.what());
 			}
-			//loader->release(m_videoIndex, 0); // DDEBUG status 0 ! // release resource 
 
 
 			float elapsed = m_timer.sample();
 
 			//if (m_frameNum % 60 == 0)    std::cout << "Algo duration: " << elapsed << " milliseconds" << std::endl;
 
-			// DDEBUG : for getbjectData() API  
+			// DDEBUG : for consoleApplication2 : getbjectData() API  
 			//---------------------------------------
 			bool supportGetbjectData = true; // DDEBUG
 			if (supportGetbjectData) {
@@ -334,13 +341,21 @@ CAlgoProcess::~CAlgoProcess()
 				info.activeCamera = 0;
 				info.motion = m_objectCount > 0 ? 1 : 0;
 				info.timeStamp = m_frameNum; // DDEBUG 
+				info.status = OBJECT_STATUS::DONE;
 				if (loader->isActive()) {
 					loader->ResQueuePush(info);
-					loader->ResQueueNotify();
+					loader->ResQueueNotify(); // not used in case of 'naive' sync by counting the 'ResQueue' !!!!
 				}
 			}
 
-			frameCount++;
+
+			if (m_videoIndex == 0) // DDEBUG DDEBUG DDEBUG 
+			{
+				bool debug = loader->isCamInBatchList(m_videoIndex);
+				debug = false;
+			}
+
+			//frameCount++;
 		} // while !terminate
 
 		return m_frameNum > 0;
@@ -367,7 +382,7 @@ CAlgoProcess::~CAlgoProcess()
 		m_timer.start();
 
 		cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
-		m_objectCount = m_tracker.process(frameBGR, m_Objects);
+		m_objectCount = m_tracker.process(frameBGR, m_Objects, frameBuff.frameNum);
 
 		m_timer.sample();
 
@@ -375,7 +390,7 @@ CAlgoProcess::~CAlgoProcess()
 			AIobjects[i] = m_Objects[i];
 
 
-		frameCount++;
+		//frameCount++;
 
 		if (frameCount % 30 == 0) {
 			std::cout << " FPS = " << 1000. / (g_elapsedSum / 30.) << " ( min / max = " << (1000. / g_elapsedMin) << " , " << (1000. / g_elapsedMax) << "\n";
@@ -407,6 +422,8 @@ CAlgoProcess::~CAlgoProcess()
 	 ---------------------------------------------------------------------------------------------------*/
 	int CAlgoProcess::getObjectData(int videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects, int& frameNum)
 	{
+		if (!m_supportGetbjectData)
+			return 0;
 		if (index >= (int)m_pObjectsAPI.size()|| (int)m_pObjectsAPI.size() == 0)
 			return 0;
 

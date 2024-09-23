@@ -27,6 +27,7 @@ public:
 	bool terminate();
 	void setCallback(CameraAICallback callback);
 	void setDrawFlag(int youDraw) { m_youDraw = youDraw; }
+	void setConsoleAppAPI(bool flag) { m_supportGetbjectData = flag; }
 
 	int getObjectData(int videoIndex, int index, ALGO_DETECTION_OBJECT_DATA *pObjects, int &frameNum);
 
@@ -89,5 +90,7 @@ private:
 
 	std::queue<CCycle>         *m_loaderResQueuePtr; // loader queue for resource 
 	CLoadBalaner* m_loader; // Load Balancer class pointer
+
+	bool m_supportGetbjectData = false; // for consoleApplication2 : getbjectData() API  
 
 };
