@@ -46,7 +46,7 @@ public:
 	
 	// Process
 	int process(void* dataTemp, ALGO_DETECTION_OBJECT_DATA* pObjects);
-	int process(cv::Mat frame, ALGO_DETECTION_OBJECT_DATA* pObjects);
+	int process(cv::Mat frame, ALGO_DETECTION_OBJECT_DATA* pObjects, int frameNum);
 	int processFrame(cv::Mat &frame);
 
 	int getAlertObjectsCount() { return m_decipher.getAlertObjectsNum();  }
@@ -75,6 +75,9 @@ private:
 	int m_height = 0;
 	void *m_data = NULL;
 	int m_frameNum = 0;
+	int m_lastFrameNum_detection = -100;
+	int m_lastFrameNum_motion = -100;
+	int m_lastFrameNum_tracking = -100;
 	int m_cycleNum = 0; // count actual processed frame#
 	//float m_calcScale = 0.5;
 	float m_scaleDisplay = 1.;// 0.7;
@@ -94,7 +97,7 @@ private:
 	CSiamTracker      m_tracker;
 	CDecipher m_decipher;
 	std::vector <CAlert> m_camerasInfo;
-	int m_cameraIndex = 0;
+	int m_cameraID = 0;
 	int m_invertImg = 0;
 	std::vector <Labels> m_detectionTypes; // store all types for detections 
 
