@@ -64,6 +64,22 @@ inline double distanceSQR(T a, const T b)
 }
 
 
+// Function for calculating median
+template<typename T>
+inline T findMedian(std::vector <T> a)
+{
+	int n = a.size();
+	// First we sort the array
+	std::sort(a.begin(), a.end());
+
+	// check for even case
+	if (n % 2 != 0)
+		return (double)a[n / 2];
+
+	return (double)(a[(n - 1) / 2] + a[n / 2]) / 2.0;
+}
+
+
 template<typename T>
 inline double distance(T a, const T b)
 {
@@ -112,6 +128,7 @@ bool similarBox2(T r1, T r2, float absRatio)
 }
 
 
+
 float similarBox(cv::Rect r1, cv::Rect r2);
 float relativeDist(cv::Rect box1, cv::Rect box2);
 
@@ -128,6 +145,14 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 		 cv::line(img, cv::Point(r.br().x, r.tl().y), cv::Point(r.tl().x, r.br().y), color, thickness);
 	 };
 
+	 template <typename T>
+	 static float ratio(T n1, T n2)
+	 {
+		 if (n2 > n1)
+			 return (float)n1 / (float)n2;
+		 else
+			 return (float)n2 / (float)n1;
+	 }
 
 #if 0
 	 template <typename T>
@@ -279,18 +304,11 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
  int depth2cvType(int depth);
  cv::Mat converPTR2MAT(void* data, int height, int width, int depth);
 
+ namespace GPU_UTIL {
 
+	 int checkForGPUs();
+	 size_t GetGPURamUsage(int _NumGPU);
+	 size_t GetGPURamtotal(int _NumGPU);
+	 bool cudaMemGetInfo_(size_t& l_free, size_t& l_Total);
 
- #if 0
- class CTimer  {
- public:
-	 void start() {
-		 start = std::chrono::system_clock::now();
-	 }
-	 void end() {}
-	 float duration() {}
-
- private:
-	 std::chrono::system_clock::time_point start, end;
- };
-#endif 
+ }

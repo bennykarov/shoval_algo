@@ -8,6 +8,11 @@
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
+#include "opencv2/core/cuda.hpp"
+#include "opencv2/core/cuda.inl.hpp"
+#include <cuda_runtime.h>
+
+
 
 #include "Utils.hpp"
 
@@ -871,135 +876,70 @@ namespace fs = std::filesystem;
 		return frameBGR;
   }	
   
-#if 0
-  // cv::Rect (12f) utils :
-  cv::Rect extendBBox(cv::Rect rect_, cv::Point p)
+
+  int GPU_UTIL::checkForGPUs()
   {
-	  if (rect_.empty())
-		  return cv::Rect(p.x - 1, p.y - 1, 3, 3);
 
-	  cv::Rect rect = rect_;
-	  if (p.x < rect.x) {
-		  rect.width += rect.x - p.x;
-		  rect.x = p.x;
-	  }
-	  else if (p.x > rect.x + rect.width) {
-		  rect.width = p.x - rect.x + 1;
-	  }
+	  using namespace cv::cuda;
 
+	  int dev = getDevice();
+	  //cv::cuda::setDevice(dev);
+	  cv::cuda::DeviceInfo _deviceinfo(dev);
 
-	  if (p.y < rect.y) {
-		  rect.height += rect.y - p.y;
-		  rect.y = p.y;
-	  }
-	  else if (p.y > rect.y + rect.height) {
-		  rect.height = p.y - rect.y + 1;
-	  }
+	  std::cout << "GPU name: " << _deviceinfo.name();
+	  size_t totalMemory, freeMemory;
+	  _deviceinfo.queryMemory(totalMemory, freeMemory);
+	  
+	  std::cout << "total memory: " << _deviceinfo.totalMemory();
+	  std::cout << "total GLOOBAL memory: " << _deviceinfo.totalGlobalMem();
 
-	  return rect;
+	  std::cout << "--------------------------";
+	  std::cout << "GPU INFO : ";
+	  printShortCudaDeviceInfo(getDevice());
+	  int cuda_devices_number = cv::cuda::getCudaEnabledDeviceCount();
+	  cout << "CUDA Device(s) Number: " << cuda_devices_number << endl;
 
+	  DeviceInfo _deviceInfo;
+	  bool _isd_evice_compatible = _deviceInfo.isCompatible();
+	  cout << "CUDA Device(s) Compatible: " << _isd_evice_compatible << endl;
+	  std::cout << "--------------------------";
+	  return cuda_devices_number;
+	  return 0;
   }
 
-
-
-  cv::Rect scaleBBox(cv::Rect rect, float scale)
+  size_t GPU_UTIL::GetGPURamUsage(int _NumGPU)
   {
-	  cv::Rect sBBox;
+	  //cudaSetDevice(_NumGPU);
 
-	  sBBox.width = int((float)rect.width * scale);
-	  sBBox.height = int((float)rect.height* scale);
-	  sBBox.x = int((float)rect.x * scale);
-	  sBBox.y = int((float)rect.y * scale);
+	  size_t l_free = 0;
+	  size_t l_Total = 0;
+	  cudaError_t error_id = cudaMemGetInfo(&l_free, &l_Total);
 
-	  return sBBox;
-
+	  return (l_Total - l_free);
   }
 
-  cv::Rect resizeBBox(cv::Rect rect, float scale)
+  size_t GPU_UTIL::GetGPURamtotal(int _NumGPU)
   {
-	  cv::Rect sBBox;
+	  //cudaSetDevice(_NumGPU);
 
-	  sBBox = rect;
-	  int wDiff = int((float)rect.width * (1. - scale));
-	  int hDiff = int((float)rect.height * (1. - scale));
-	  sBBox.width -= wDiff;
-	  sBBox.height -= hDiff;
-	  sBBox.x += int((float)wDiff / 2.);
-	  sBBox.y += int((float)hDiff / 2.);
+	  size_t l_free = 0;
+	  size_t l_Total = 0;
+	  cudaError_t error_id = cudaMemGetInfo(&l_free, &l_Total);
 
-	  return sBBox;
-
+	  return l_Total;
   }
 
-
-  // Resize with bopunderies check for resized box
-  cv::Rect resizeBBox(cv::Rect rect, cv::Size size, float scale)
+  bool GPU_UTIL::cudaMemGetInfo_(size_t& l_free , size_t& l_Total)
   {
-	  cv::Rect sBBox;
+	  //cudaSetDevice(_NumGPU);
 
-	  sBBox = rect;
-	  int wDiff = int((float)rect.width * (1. - scale));
-	  int hDiff = int((float)rect.height * (1. - scale));
-	  sBBox.width -= wDiff;
-	  sBBox.height -= hDiff;
-	  sBBox.x += int((float)wDiff / 2.);
-	  sBBox.y += int((float)hDiff / 2.);
+	  l_free = 0;
+	  l_Total = 0;
+	  cudaError_t error_id = cudaMemGetInfo(&l_free, &l_Total);
 
-	  UTILS::checkBounderies(sBBox, size);
-
-	  return sBBox;
+	  if (error_id == 0)
+		  return true;
+	  else
+		  return true;
 
   }
-
-
-
-  // Ratio of RECTs area ( < 1 )
-  float bboxRatio(cv::Rect r1, cv::Rect r2)
-  {
-	  int area1 = r1.area();
-	  int area2 = r2.area();
-
-	  return area1 > area2 ? (float)area2 / (float)area1 : (float)area1 / (float)area2;
-  }
-
-  // Ratio of r1 inside r2
-  float bboxesBounding(cv::Rect2f r1, cv::Rect2f r2)
-  {
-	  cv::Rect2f overlappedBox = r1 & r2;
-	  if (overlappedBox.area() == 0)
-		  return 0;
-
-	  return (float)overlappedBox.area() / (float)r1.area();
-	  //return r1.area() > r2.area() ? bboxRatio(r2, overlappedBox) : bboxRatio(r1, overlappedBox);
-  }
-  // Max Ratio of r1 & r2 overlapping 
-  float maxBboxesBounding(cv::Rect2f r1, cv::Rect2f r2)
-  {
-	  cv::Rect2f overlappedBox = r1 & r2;
-	  int overlappedArea = overlappedBox.area();
-	  if (overlappedArea == 0)
-		  return 0;
-
-	  return   r1.area() < r2.area() ? overlappedArea / r1.area() : overlappedArea / r2.area();
-  }
-
-
-  cv::Point centerOf(cv::Rect r)
-  {
-	  return (r.br() + r.tl())*0.5;
-  }
-
-  cv::Point2f centerOf2f(cv::Rect r)
-  {
-	  return (cv::Point2f(r.br() + r.tl())*0.5);
-  }
-
-
-  cv::Rect moveByCenter(cv::Rect r, cv::Point center)
-  {
-	  cv::Rect newR = r;
-	  newR.x = center.x - int((float)r.width / 2.);
-	  newR.y = center.y - int((float)r.height / 2.);
-	  return newR;
-  }
-#endif 
