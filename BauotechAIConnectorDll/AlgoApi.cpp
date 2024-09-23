@@ -26,17 +26,13 @@ typedef struct tagRGB32TRIPLE {
 
 
 
-//std::atomic<bool>  debugFirstCameraConfig = true;
-
-
 
 //--------------------------------------------------------------------------------------------------------
 //  G L O B A L S   !
-
-
 // Define a global critical section
 CRITICAL_SECTION gCriticalSection;
 bool m_initialize = false;
+//CLogger2& logger2;
 
 CameraRequestCallback gCameraRequestCallback = nullptr; // moved from header file
 std::unordered_map<uint32_t, CameraAICallback> gAICllbacks;
@@ -45,6 +41,8 @@ CLoadBalaner  g_loadBalancer;
 //CSemaphore  g_ResourceSemaphore;
 CAlgoProcess   g_algoProcess[MAX_VIDEOS];
 TSBuffQueue g_bufQ[MAX_VIDEOS];
+//INIT_LOGGER
+//CLogger2* CLogger2::instance = nullptr;
 //--------------------------------------------------------------------------------------------------------
 
 API_EXPORT void Crash()
@@ -67,22 +65,24 @@ API_EXPORT void BauotechAlgoConnector_Init()
 
 	InitializeCriticalSection(&gCriticalSection);
 
-		
+	//CLogger2& logger2 = CLogger2::getInstance();
 
+
+		
+	int debugLevel = 1;
+	if (debugLevel > 0) {
+		//LOGGER::init(FILES::OUTPUT_FOLDER_NAME, DLEVEL::WARNING2);
+		LOGGER::init(FILES::OUTPUT_FOLDER_NAME, DLEVEL::DEBUG_HIGH);
+	}
+	LOGGER::log(DLEVEL::INFO1, "BauotechAlgoConnector_Init()");
 
 	bool runloadBalancer = true; // DDEBUG FLAG
 
-
 	if (runloadBalancer)
-		g_loadBalancer.init(LB_SCHEME::V301);
+		//g_loadBalancer.init(LB_SCHEME::V0); // DDEBUG DDEBUG TEST
+		g_loadBalancer.init(LB_SCHEME::V302);
 	else
 		LOGGER::log(DLEVEL::WARNING1, " RUNNIG  W I T H O U T  LOAD BALANCER  !!!!!");
-
-	int debugLevel = 1;
-	if (debugLevel > 0)
-		LOGGER::init(FILES::OUTPUT_FOLDER_NAME, DLEVEL::ALL);
-
-	LOGGER::log(DLEVEL::INFO1, "BauotechAlgoConnector_Init()");
 
 
 	m_initialize = true;
@@ -137,15 +137,15 @@ API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, u
 	
 
 	// Load balancer Aquire - quit if not allowed (if allowOverflow = true)
-	bool allowOverflow = false;
+	bool processNotInList = false;
 	
-	auto error = g_loadBalancer.acquire(videoIndex, allowOverflow);
+	auto error = g_loadBalancer.acquire(videoIndex, processNotInList);
 	if (error != AQUIRE_ERROR::NOT_ACTIVE && error != AQUIRE_ERROR::OK)
 	{
-		std::string errorMsg = "LB Ignoring cam #" + std::to_string(videoIndex) + " error = " + std::to_string(error) + "\n";
-		LOGGER::log(DLEVEL::WARNING2, errorMsg);
-		//std::cout << "LB Ignoring cam #" << videoIndex << " error =" << error << "\n";
-		if (!allowOverflow) 
+		std::string errorMsg = "LB Ignors cam #" + std::to_string(videoIndex) + " (error = " + std::to_string(error) + "(not in batch list)\n";
+		LOGGER::log(DLEVEL::DEBUG_HIGH, errorMsg);
+		//LOGGER::log(DLEVEL::WARNING2, errorMsg);
+		if (!processNotInList)
 			return false;	
 	}
 
@@ -259,4 +259,12 @@ API_EXPORT void BauotechAlgoConnector_SetCameraType(uint32_t videoIndex, uint32_
 	g_loadBalancer.SetCameraType(videoIndex, type);
 }
 
+/*------------------------------------------------------------------------------------------------------------------
+* OPtimization : remove mutex lock whiile console API 'GetbjectData()' is active 
+------------------------------------------------------------------------------------------------------------------*/
+API_EXPORT void BauotechAlgoConnector_setConsoleAPI(uint32_t videoIndex, uint8_t swichON)
+{
+	g_algoProcess[videoIndex].setConsoleAppAPI(swichON);
+
+}
 
