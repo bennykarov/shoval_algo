@@ -246,7 +246,6 @@ int CDecipher::bestMatch(cv::Rect box, float OverlappedThrash, std::vector <int>
 			continue;
 
 
-		//for (auto obj : m_objects[i])
 		auto obj = m_objects[i].back();
 		{
 			float overlappingRatio = bboxesBounding(obj.m_bbox, box); // most new box overlapped old box
@@ -256,9 +255,6 @@ int CDecipher::bestMatch(cv::Rect box, float OverlappedThrash, std::vector <int>
 			// Different condition for moving and static objects:
 			// In case of static object - dont match after start moving - better treats as a new object 
 			// This done to avoid "jumping"  from one parking car to another 
-
-			if (obj.m_moving > 0 && obj.m_ID == 0)
-				int debug = 10;
 
 			if (obj.m_moving > 0)
 				Matching = (overlappingRatio > OverlappedThrash) || (similarBox(obj.m_bbox, box, 0.6 * 0.6) && distance(obj.m_bbox, box) < maxDistance);
@@ -292,8 +288,8 @@ int CDecipher::track(int mode)
 	m_pruneObjIDs.clear();
 
 	for (auto& obj : m_objects) {
-		// Remove old object
 
+		// Remove old object
 		if 	(getHiddenLen(obj.back()) > GET_KEEP_HIDDEN_FRAMES(obj.back().m_moving)) {
 			// remove object later
 			m_pruneObjIDs.push_back(obj.back().m_ID);
@@ -342,8 +338,9 @@ std::vector <CObject> CDecipher::getNewObjects(int frameNum)
 	std::vector <CObject> newObjects;
 
 	std::copy_if(m_detectedObjects.begin(), m_detectedObjects.end(), std::back_inserter(newObjects),
-		[frameNum](CObject obj) { return obj.m_frameNum >= frameNum && obj.m_age == 1; });
-
+		[frameNum](CObject obj) { return obj.m_frameNum >= frameNum && obj.m_age < MIN_STABLE_DETECTION_FRAMES; });
+		//[frameNum](CObject obj) { return obj.m_frameNum >= frameNum && obj.m_age == 1; });
+		
 	return newObjects;
 }
 
@@ -487,10 +484,10 @@ std::vector <CObject> CDecipher::getLastLostObjects(int curFrameNum, int label)
 *---------------------------------------------------------------------------------*/
 float CDecipher::stableConfidence(std::vector <CObject> obj)
 {
-	if (obj.size() < MIN_STABLE_DETECTION_FRAMES)
+	if (obj.size() < MIN_STABLE_DETECTION_FRAMES) 
 		return 0;
 
-	// Give advantage to elders objects - provide the best confidence of last detections 
+	// Give more weight to an elders objects - provide the best confidence of last detections 
 	if (obj.size() > MIN_STABLE_DETECTION_FRAMES * 3) { // DDEBUG CONST 
 		auto it = std::max_element(obj.begin(),obj.end(), [](const CObject& a, const CObject& b) { return a.m_confidence < b.m_confidence; });
 		return it->m_confidence;
@@ -555,14 +552,20 @@ bool CDecipher::isMoving(std::vector <CObject> obj)
 int CDecipher::isStatic(std::vector <CObject> obj)
 {
 	int MinLen = 3;
-	int MinStatisticsPointsLen = 2;
+	int MinStatisticsPointsLen = 3;  // excluding outliers 
 	int INSPECTED_SECONDS = 2;
 	int INSPECTED_LEN = INSPECTED_SECONDS * CONSTANTS::FPS; // in frames
 	float MIN_OVERLAPPING_RATIO = 0.8;
+	float DIST_TO_BOX_RATIO = 1./20.; // Motion 'dist' proprional to obj dim (box)
+
+	
 
 	// Default is moving  here 
 	if (obj.size() < MinLen)
 		return 0;
+
+	if (obj.back().m_ID == 10)
+		int debug = 10;
 
 	// 'Structure' keeps indices, centers and areas of detection vecs
 	std::vector <int> indices;
@@ -580,10 +583,9 @@ int CDecipher::isStatic(std::vector <CObject> obj)
 		areas.push_back(obj[i].m_bbox.area());
 	}
 
-	//---------------------------------
-	// Check positions (centers) diff
-	//---------------------------------
 
+	// Find Median of centers 
+	//---------------------------
 	cv::Point2f massCenter;
 
 	auto centersToSort = centers; // dont ruin the original indices 
@@ -595,7 +597,8 @@ int CDecipher::isStatic(std::vector <CObject> obj)
 	// MIN_STATIC_DIST is the distance from the Median location,
 	// When obj.size > 10, we allowed large step 
 	// Mark outliers (ind = -1)
-	int MIN_STATIC_DIST = int(obj.back().m_bbox.size().width / 10);
+	//-----------------------------------------------------------
+	int MIN_STATIC_DIST = int(float(obj.back().m_bbox.size().width) * DIST_TO_BOX_RATIO);
 	if (obj.size() > 10)
 		MIN_STATIC_DIST *= 2;
 	for (int i = 0; i < centers.size();i++) {
@@ -693,7 +696,7 @@ int CDecipher::numberOfPersonsOnBoard()
 * The filtered Alert object are stores within the m_alertObjects;
 * This function also calc the 'm_alertObjects' when ever called to 'getDetectedbjects'
 ----------------------------------------------------------------------------------*/
-std::vector <CObject> CDecipher::getDetectedbjects(float scale, cv::Mat *frameImg)
+std::vector <CObject> CDecipher::getStableObjects(float scale, cv::Mat *frameImg)
 {
 	bool OnlyStaticObject = true; 
 	m_alertObjects.clear();
@@ -743,7 +746,7 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 		return false;
 
 	// Ignore too small object
-	if (0) { // DDEBUG DDEBUG REMOVED for drone test
+	if (1) { // DDEBUG DDEBUG REMOVED this for drone test
 		int maxDim = max(obj.m_bbox.width, obj.m_bbox.height);
 		if (maxDim < MIN_OBJECT_SIDE_SIZE)
 			return true;

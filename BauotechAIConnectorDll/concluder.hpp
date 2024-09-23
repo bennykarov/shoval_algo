@@ -106,7 +106,7 @@ public:
 
 	int Siren();
 
-	std::vector <CObject> getDetectedbjects(float scale = 1., cv::Mat* frame = nullptr);
+	std::vector <CObject> getStableObjects(float scale = 1., cv::Mat* frame = nullptr);
 
 	std::vector <int> getIDStoPrune() { return m_pruneObjIDs; }
 	std::vector <CObject> getTrkObjsToRenew();
