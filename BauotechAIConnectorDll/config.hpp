@@ -15,9 +15,9 @@ namespace CONSTANTS {
 	int const StableLenForPrediction = minLenForPrediction+10; // Prediction doesn't usethe first 10 unstable frames
 
 	// NEWs
-	int const DEFAULT_SKIP_FRAMES_BGSEG = 1;
-	int const DEFAULT_SKIP_FRAMES_IN_MOTION_YOLO = 2;//  2; // Process yolo in case motion was detected 
-	int const DEFAULT_SKIP_FRAMES_YOLO = 2; // 10;   // Process yolo in constant intervals 
+	int const DEFAULT_STEP_FRAMES_BGSEG = 1;
+	//int const DEFAULT_SKIP_FRAMES_IN_MOTION_YOLO = 2;//  2; // Process yolo in case motion was detected 
+	int const DEFAULT_STEP_FRAMES_YOLO = 1; // 10;   // Process yolo in constant intervals 
 
 	int const DEFAULT_LOADBALANCER_RESOURCE = 4;
 
@@ -48,19 +48,16 @@ struct Config
 	std::string roisName;
 
 	std::string modelFolder = "../BauoSafeZone/config_files/";
-	//int showTime = 1;
-	//int showTruck = 0;
 	int showMotion = 0;
 	int debugLevel = 0;
 	int debugLevel_LB = 0;
 
 	float displayScale = 1.;
-	// OPtimization
-	int skipMotionFrames = CONSTANTS::DEFAULT_SKIP_FRAMES_BGSEG;
-	int skipDetectionFramesInMotion = CONSTANTS::DEFAULT_SKIP_FRAMES_IN_MOTION_YOLO; // in case  motion was detected
-	
-	int skipDetectionFrames = CONSTANTS::DEFAULT_SKIP_FRAMES_YOLO; 
-	
+
+	// OPtimization - skip (steps) for Motion (BGSEG), Detection 
+	int stepMotionFrames = CONSTANTS::DEFAULT_STEP_FRAMES_BGSEG;
+	int stepDetectionFrames = CONSTANTS::DEFAULT_STEP_FRAMES_YOLO; // YOLO steps 
+
 	// Algo
 	int motionType = 2;
 	int trackerType = 0;
@@ -69,10 +66,11 @@ struct Config
 	float scale = 1.0; // 0.5;
 	int waitKeyTime=1;
 	int record = 0;
-	int demoMode=0;
+
 	// MOG2 params:
-	int MHistory = 100;
-	float MvarThreshold = 580.0;
+	int MHistory = 50;
+	float MvarThreshold = 2700.0
+		; // 580.0;
 	float MlearningRate = -1.;
 	int useGPU = 1;
 	int GPUBatchSize = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
