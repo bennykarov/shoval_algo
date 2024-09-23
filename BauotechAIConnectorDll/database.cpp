@@ -269,7 +269,6 @@ bool FILE_UTILS::readConfigFile(std::string ConfigFName, Config& conf)
     conf.roisName = pt.get<std::string>("GENERAL.rois", conf.roisName);
     conf.waitKeyTime = pt.get<int>("GENERAL.delay-ms", conf.waitKeyTime);
     conf.record = pt.get<int>("GENERAL.record", conf.record);
-    conf.demoMode = pt.get<int>("GENERAL.demo", conf.demoMode);
     conf.debugLevel = pt.get<int>("GENERAL.debug", conf.debugLevel);
     conf.debugLevel_LB = pt.get<int>("GENERAL.debug_LB", conf.debugLevel_LB);
     
@@ -282,10 +281,8 @@ bool FILE_UTILS::readConfigFile(std::string ConfigFName, Config& conf)
     // ALGO:
     //---------
     // [OPTIMIZE]  Optimization
-    conf.skipMotionFrames = pt.get<int>("ALGO.stepMotion", conf.skipMotionFrames);
-    conf.skipDetectionFrames = pt.get<int>("ALGO.stepDetection", conf.skipDetectionFrames);
-    conf.skipDetectionFramesInMotion = pt.get<int>("ALGO.stepDetectionInMotion", conf.skipDetectionFramesInMotion);
-    conf.skipDetectionFramesInMotion = pt.get<int>("ALGO.stepTracking", conf.skipDetectionFramesInMotion);
+    conf.stepMotionFrames = pt.get<int>("ALGO.stepMotion", conf.stepMotionFrames);
+    conf.stepDetectionFrames = pt.get<int>("ALGO.stepDetection", conf.stepDetectionFrames);
     std::vector <int> motionROI_vec = to_array<int>(pt.get<std::string>("ALGO.motionROI", "0,0,0,0"));
     if (motionROI_vec[2] > 0) // width
         conf.motionROI = cv::Rect(motionROI_vec[0], motionROI_vec[1], motionROI_vec[2], motionROI_vec[3]);
