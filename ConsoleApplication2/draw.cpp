@@ -91,7 +91,7 @@ int CDISPLAY::draw(int height, int width, char *pData, std::vector <ALGO_DETECTI
 		for (auto obj : AIObjects) {
 			int colorInd = obj.ObjectType % g_colors.size();
 			int thickness = 2;
-			if (obj.DetectionPercentage == 9999)
+			if (obj.DetectionPercentage == 9999) // TRICK TO REVEAL MOTION TYPE (9999 = static)
 				thickness *= 3;
 
 			cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[colorInd], thickness);
