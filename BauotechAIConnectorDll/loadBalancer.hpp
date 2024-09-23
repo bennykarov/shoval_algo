@@ -32,6 +32,13 @@ enum {
 	BUSY = 1
 };
 
+enum OBJECT_STATUS {
+    READY = 0,      // Processed and Reprior , waiting in queue
+    IN_PROCESS,     // place holder
+    DONE            // Right after process, before repriorized 
+};
+
+
 enum LB_SCHEME {
     V0 = 0,
     V1,
@@ -46,7 +53,8 @@ enum LB_SCHEME {
     V200,
     V201,
     V300,
-    V301
+    V301,
+    V302
 };
 
 enum CAMERA_TYPE {
@@ -78,7 +86,9 @@ public:
         detections = 0;
         activeCamera = 0;
         alerts = 0;
+        newObjs = 0;
         motion = 0;
+        status = OBJECT_STATUS::READY;
     }
 
     int camID = -1;
@@ -86,8 +96,11 @@ public:
     int detections = 0;
     int activeCamera = 0;
     int alerts = 0;
+    int newObjs = 0; // New objects - provided by getNewObjects()
     int motion = 0;
     int timeStamp = 0;
+    OBJECT_STATUS status = OBJECT_STATUS::READY;
+
 
 };
 
@@ -114,6 +127,8 @@ public:
 
         if (camsNum <= 0 || resourcesNum <= 0)
             return;
+
+        m_priorities.clear(); // for mulpile call to init()
 
         // [0] (lowest)
         m_priorities.push_back(0); 
@@ -182,7 +197,9 @@ public:
     bool releaseDebug(int camID);
 
     void priorityTH(); // thread to consolidate cam detection results 
-    bool priorityUpdate(); // thread to consolidate cam detection results 
+    void priorityTH_OLD(); // thread to consolidate cam detection results 
+    bool priorityUpdate(); // setPriority to top queue
+    bool priorityUpdateTop(); // Handle top cam in queue
 
     // Callback for camera threads 
     static void ResQueuePush(CCycle);
@@ -192,6 +209,7 @@ public:
     static std::condition_variable *getResCondVPtr();
     */
 
+    bool isCamInBatchList(int camID); 
 
     void cameraCounter(int cams); // { m_camerasLen += cams;  } // Add or remove cameras counter
     void initCamera(int videoIndex);
@@ -234,6 +252,7 @@ private:
     int calcPriority_V201(int motion, int detections, int alert, int observed);
     int calcPriority_V300(int motion, int detections, int alert, int observed);
     int calcPriority_V301(int motion, int detections, int alert, int observed);
+    int calcPriority_V302(int motion, int detections, int alert, int observed);
 
     void setPrior(CCycle info);
 
@@ -248,6 +267,9 @@ private:
 
     void prior();
 
+    void printQueueInfo();
+
+
 public:
     CSemaphore m_resourceBouncer;
 
@@ -258,6 +280,8 @@ private:
 
 private:
     std::vector <int>   m_cameraBatchList; // list sent to server 
+    std::vector <int>   m_cameraBatchListDone; // list sent to server 
+
     std::vector <int>   m_cameraBatchList_prev; // list sent to server 
     std::vector <int>   m_camsProcessed; // cameras had been process (return in resQueue)
     //std::vector <int>   m_camInQueue; // cameras actually in process
@@ -289,8 +313,8 @@ private:
     int m_actualTopPriority; // actual in curent queue 
     CPrioritiesLevles m_priorities;
 
-    int m_bestResourceNum = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
-    int m_resourceNum = m_bestResourceNum;
+    int m_maxResourceNum = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
+    int m_resourceNum = m_maxResourceNum; // can be less tham max availble - in case num pf cameras is less
 
     std::thread m_beatthread;
 
