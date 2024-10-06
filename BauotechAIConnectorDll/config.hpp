@@ -4,6 +4,9 @@
 #define MAX_OBJECTS 30 
 // #define MAX_CAMERAS 40 
 
+const bool YOLO_MNGR = true; // YOLO detectors limiter 
+
+
 namespace CONSTANTS {
 	int const FPS = 30;
 	int const DetectionFPS = 3;
