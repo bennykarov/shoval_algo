@@ -20,6 +20,24 @@ using namespace CONCLUDER_CONSTANTS;
 
 void CDecipher::init(cv::Size imgDim, int debugLevel) { m_imgDim  = imgDim;  m_debugLevel = debugLevel; 	m_active = true; }
 
+/*--------------------------------------------------------------------------
+// UTILITIES :
+--------------------------------------------------------------------------*/
+
+float GET_MIN_YOLO_CONFIDENCE(Labels label, bool  MovingObj)
+{	
+	float conf = 0;
+	switch (label)
+	{
+	case Labels::person:
+		conf = MovingObj == 0 ? 0.5 : 0.2;
+		break;
+	default:
+		conf = MovingObj == 0 ? 0.5 : 0.4;
+	}
+
+	return conf;
+}
 
 //----------------------------------------------------------------------------------------------
 // Find trackerBoxes that is similar (overlapping) to yoloBoxes
@@ -124,12 +142,13 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 
 		newObj.m_confidence = Yobj.confidence;
 
-		// Filter specilas cases:
+#if 0
+		// Filter specilas cases: move to suspected
 		// Small object must have HIGHER Confidence 
 		const int Small_Box_Dim = 20;
 		if (Yobj.box.area() <= Small_Box_Dim * Small_Box_Dim && Yobj.confidence < YOLO_CONFIDENCE_THRESHOLD_SMALL_DIM)
 			continue;
-
+#endif 
 		//if (Yobj.box.width <= Small_Box_Dim && Yobj.box.height <= Small_Box_Dim)   int debug = 10;
 
 		float overLappedTreshold = 0.3; // DDEBUG CONST
@@ -706,7 +725,7 @@ std::vector <CObject> CDecipher::getStableObjects(float scale, cv::Mat *frameImg
 	// Scale back to origin dimensions is required
 	for (auto obj : m_detectedObjects) {
 		int MAX_HIDDEN_FRAME = obj.m_moving > 0 ? MAX_SIREN_HIDDEN_FRAMES : MAX_SIREN_HIDDEN_FRAMES * 10;
-		if (obj.m_confidence >= GET_YOLO_CONFIDENCE_THRESHOLD(obj.m_moving <= 0) && getHiddenLen(obj) <= MAX_HIDDEN_FRAME) { // Allow only fresh detected objects
+		if (obj.m_confidence >= GET_MIN_YOLO_CONFIDENCE((Labels)obj.m_label, obj.m_moving) && getHiddenLen(obj) <= MAX_HIDDEN_FRAME) { // Allow only fresh detected objects
 			scaledDetectedObjects.push_back(obj);
 			scaledDetectedObjects.back().m_bbox = UTILS::scaleBBox(obj.m_bbox, scale);
 		}
@@ -744,6 +763,13 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 
 	if (frameImg == nullptr)
 		return false;
+
+
+	// Small static object must have HIGHER Confidence 
+	const int Small_Box_Dim = 20;
+	if (obj.m_moving == 0 && obj.m_bbox.area() <= Small_Box_Dim * Small_Box_Dim && obj.m_confidence < YOLO_HIGH_CONFIDENCE)
+		return true;
+
 
 	// Ignore too small object
 	if (1) { // DDEBUG DDEBUG REMOVED this for drone test

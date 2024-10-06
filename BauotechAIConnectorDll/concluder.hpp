@@ -19,7 +19,8 @@ namespace CONCLUDER_CONSTANTS
 	const int MIN_STDDEV_FOR_BOX = 20; // min color variation (contrast) rquired in detection image
 	const float MIN_BOX_RATION_FOR_PERSON = 0.8; // Person box should be nerrow (far from square)
 	const float HIGH_YOLO_CONFIDENCE = 0.9; // Person box should be nerrow (far from square)
-	const int   MIN_OBJECT_SIDE_SIZE = 20; // Object box width or height (the bigger of the two)
+	//const int   MIN_OBJECT_SIDE_SIZE = 20; // Object box width or height (the bigger of the two)
+	const int   MIN_OBJECT_SIDE_SIZE = 15; // Object box width or height (the bigger of the two)
 
 	//const int MIN_STABLE_DETECTION_FRAMES = 7;
 	const int MIN_STABLE_DETECTION_FRAMES = 3; // 1 for load balancer where framerate is LOW ;
@@ -46,17 +47,14 @@ inline int GET_KEEP_HIDDEN_FRAMES(int static_len)
 	*/
 }
 
+/*
 inline float GET_YOLO_CONFIDENCE_THRESHOLD(bool staticObj)
 {
-	return staticObj ? YOLO_CONFIDENCE_MIN_THRESHOLD : YOLO_CONFIDENCE_THRESHOLD;
-	/*
-	if (staticObj)
-		return YOLO_CONFIDENCE_MIN_THRESHOLD;
-	else
-		return  YOLO_CONFIDENCE_THRESHOLD;
-	*/
+	return staticObj ? YOLO_MIN_STATIC_CONFIDENCE : YOLO_MIN_CONFIDENCE;
 }
+*/
 
+float GET_MIN_YOLO_CONFIDENCE(Labels label, bool   staticObj);
 
 cv::Point2f center(cv::Rect r);
 
