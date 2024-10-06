@@ -14,6 +14,7 @@
 
 #include "yolo/types.hpp"
 #include "CObject.hpp"
+#include "yolo/YOLO_mngr.hpp"
 #include "yolo/yolo.hpp"
 //#include "trackerBasic.hpp"
 #include "dasiamrpn_tracker.hpp"
@@ -93,6 +94,8 @@ private:
 
 	//CYolo5 m_yolo; // DDEBUG 
 	CYolo8 m_yolo;
+	//std::vector <std::shared_ptr<ST_yoloDetectors>> m_yoloST;
+	//ST_yoloDetectors2  m_yoloST;
 	//CMTracker       m_tracker;
 	CSiamTracker      m_tracker;
 	CDecipher m_decipher;

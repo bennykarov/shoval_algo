@@ -20,12 +20,20 @@
 #include "testBalancer.hpp" 
 
 #include "database.hpp"
+#include "yolo/YOLO_mngr.hpp"
 
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
 
 using namespace std::chrono_literals;
 
+//---------------------------------------------------------------------------------
+// Singletone YOLO initialization:
+std::map<int, std::shared_ptr<ST_yoloDetectors>> ST_yoloDetectors::instances;
+std::mutex ST_yoloDetectors::st_mtx;
+ThreadSafeVector <int> ST_yoloDetectors::freeDetectors;
+int ST_yoloDetectors::m_maxDetectors = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
+//---------------------------------------------------------------------------------
 
 std::mutex qeue_mutex;
 std::mutex bacthlist_MTX;
@@ -138,9 +146,7 @@ void CLoadBalaner::priorityTH()
 void CLoadBalaner::ResQueuePush(CCycle info)
 {
 
-	if (1) // DDEBUG
-		LOGGER::log(DLEVEL::DEBUG_HIGH, std::string(std::string(" 'reQueue' get processed frame : " + std::to_string(info.camID))));
-		//LOGGER::log(DLEVEL::WARNING2, std::string(std::string(" 'algodetection' processed frame : " + std::to_string(info.camID))));
+	LOGGER::log(DLEVEL::INFO2, std::string(std::string(" 'reQueue' get processed frame : " + std::to_string(info.camID))));
 
 	const std::lock_guard<std::mutex> lock(g_resQMtx);
 
@@ -297,15 +303,11 @@ int CLoadBalaner::init(LB_SCHEME scheme)
 	FILE_UTILS::readConfigFile(params);
 	//tuneQueueParams(m_camerasNum);
 
-	//m_priorities.init()
-
 
 	m_debugLevel = params.debugLevel_LB;
 
 
-	m_maxResourceNum = m_resourceNum = params.GPUBatchSize; // Calc number of threads can run on this PC simultaneously  
-
-	//m_resourceNum = calcPCResource(); // Calc number of threads can run on this PC simultaneously  
+	m_maxResourceNum = m_resourceNum = ST_yoloDetectors::m_maxDetectors =  params.GPUBatchSize; // Calc number of threads can run on this PC simultaneously  
 	
 	m_logBatchQueue.set_capacity(30*100*10); // DDEBUG CONST 
 
@@ -319,6 +321,13 @@ int CLoadBalaner::init(LB_SCHEME scheme)
 	if (DRAW_DASHBOARD)
 		m_dashboard.init(params.GPUBatchSize, m_resourceNum);
 
+	// Create & init yolo "floating" detectors 
+	int resourceNum = params.GPUBatchSize; // DDEBUG DDEBUG CONST reouceNum
+	for (int i = 0; i < resourceNum; i++) {
+		auto yolo2 = ST_yoloDetectors::getInstance(i);
+		if (yolo2 == nullptr || !yolo2->init(params.modelFolder, true))
+			std::cout << "Cant init YOLO net , quit \n";
+	}
 
 	return m_debugLevel;
 }
@@ -852,6 +861,12 @@ AQUIRE_ERROR CLoadBalaner::acquire(int camID, bool processNotInList)
 {
 	if (!m_active)
 		return AQUIRE_ERROR::NOT_ACTIVE;
+
+	// Check that there ius a YOLO resource 
+	if (YOLO_MNGR) {
+		if (ST_yoloDetectors::getFreeInstenceInd() < 0)
+			return AQUIRE_ERROR::RESOURCE_OVERFLOW;
+	}
 
 	AQUIRE_ERROR error = AQUIRE_ERROR::OK;
 

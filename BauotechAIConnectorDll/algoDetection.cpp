@@ -23,7 +23,9 @@
 #include "files.hpp"
 #include "AlgoApi.h"
 #include "CObject.hpp"
-#include "yolo/yolo.hpp"
+
+#include "yolo/YOLO_mngr.hpp"
+//#include "yolo/yolo.hpp"
 #include "alert.hpp"
 #include "concluder.hpp"
 
@@ -44,8 +46,8 @@
 #define MAX_PERSON_DIM	cv::Size(40, 90) // DDEBUG CONST
 #define MAX_OBJ_DIM	cv::Size(350, 350) // DDEBUG CONST	
 
-
 /*
+
 #ifdef _DEBUG
 #pragma comment(lib, "opencv_core470d.lib")
 #pragma comment(lib, "opencv_highgui470d.lib")
@@ -107,6 +109,8 @@
 #endif
 
 
+
+
 namespace  ALGO_DETECTOPN_CONSTS {
 	const int MIN_CONT_AREA = 20 * 10;
 	const int MAX_CONT_AREA = 1000 * 1000;
@@ -131,8 +135,11 @@ void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA* pObjects)
 
 	pObjects->ObjectType = (int)cObject.m_label;
 
-	pObjects->DetectionPercentage = cObject.m_moving > 0 ? 0 : 9999; // DDEBUG DDEBUG mark static as 9999  under 'DetectionPercentage'
-
+	//pObjects->DetectionPercentage = cObject.m_moving > 0 ? 0 : 9999; // DDEBUG DDEBUG mark static as 9999  under 'DetectionPercentage'
+	if (cObject.m_moving == 0)
+		pObjects->DetectionPercentage = 9999;  // DDEBUG DDEBUG mark static as 9999  under 'DetectionPercentage'
+	else
+		pObjects->DetectionPercentage = int(cObject.m_confidence * 100); // int - make it percents units (two floating digit)
 }
 
 
@@ -216,14 +223,13 @@ void CDetector::setCamerasInfo(std::vector <CAlert> camerasInfo)
 
 bool CDetector::InitGPU()
 {
-
 	if (!m_yolo.init(m_params.modelFolder,true)) 
 	{
 		std::cout << "Cant init YOLO net , quit \n";
 		return false;
 	}
-	return true;
-	
+
+	return true;	
 }
 
 
@@ -276,16 +282,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 			point -= m_camROI.tl();
 	}
 
-
-	/*
-	if (0) // Fix too small ROI 
-		{
-			if (m_camROI.width < YOLO_INPUT_WIDTH)
-				m_camROI.width = YOLO_INPUT_WIDTH;
-			if (m_camROI.height < YOLO_INPUT_HEIGHT)
-				m_camROI.height = YOLO_INPUT_HEIGHT;
-		}
-	*/
 		
 	m_decipher.clear();
 
@@ -299,11 +295,15 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		if (m_params.MLType > 0)
 		{
-			if (!m_yolo.init(m_params.modelFolder, m_isCuda)) {
-				std::cout << "Cant init YOLO net , quit \n";
-
-				return false;
+			if (!YOLO_MNGR) {
+				if (!m_yolo.init(m_params.modelFolder, m_isCuda)) {
+					std::cout << "Cant init YOLO net , quit \n";
+					return false;
+				}
 			}
+			else  // tolo_mngr
+				; // init of yolo moved to loadBalancer when YOLO is managed 
+
 		}
 
 		// MOG2 
@@ -371,7 +371,19 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		//--------------------
 		m_Yolotput.clear();
 		if (timeForDetection()) {
-			m_yolo.detect(frame, m_Yolotput);
+			if (YOLO_MNGR) {
+				auto yolo2 = ST_yoloDetectors::getInstance();
+				if (yolo2 == nullptr) {
+					std::cout << "Failed to get YOLO Singleton !!!\n"; // DDEBUG unhanled  ERROR 
+					Beep(1000, 50);
+				}
+				else {
+					yolo2->detect(frame, m_Yolotput);
+				}
+			}
+			else 
+				m_yolo.detect(frame, m_Yolotput);
+			
 			m_lastFrameNum_detection = m_frameNum;
 
 		}
@@ -500,6 +512,10 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 			m_frameNum = frameNum;
 		else 
 			m_frameNum++; // temp - while frameNum for server is missing !!!!!  15-9-24
+
+
+		if (m_frameNum == 355)
+			int debug = 10;
 
 
 		return detectedObjs.size();
