@@ -21,6 +21,7 @@
 #include <string.h>
 #include <vector>
 #include <codecvt>
+#include <format> 
 
 #include <algorithm>
 
@@ -617,10 +618,10 @@ int run(std::string inputName)
             {
                 rectangle(render_image, bboxs[i], Scalar(0, 255, 0), 2);
 
-                std::string timeLabel = format("Inference time: %.2f ms", tickMeter.getTimeMilli());
+                std::string timeLabel = std::format("Inference time: %.2f ms", tickMeter.getTimeMilli());
                 float score = m_tracker.getScore(i);
                 //if (score < 0.9)  int debug = 10;
-                std::string scoreLabel = format("Score: %f", score ); //  m_scores[i]);
+                std::string scoreLabel = std::format("Score: %f", score ); //  m_scores[i]);
                 std::cout << "(" << i << ")" << scoreLabel << "\n";
                 int leftSide = render_image.cols * 3 / 4;
                 /*
