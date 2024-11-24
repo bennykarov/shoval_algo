@@ -259,33 +259,33 @@ CAlgoProcess::~CAlgoProcess()
 				}
 
 			m_frameNum = frameBuff.frameNum;
+			m_ts = frameBuff.ts;
 
 			LOGGER::setFrameNum(m_frameNum);
 
 
 			try {
 				m_timer.sample();
-				cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
+				cv::Mat frameBGR = convertPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
 				m_objectCount = m_tracker.process(frameBGR, m_Objects, frameBuff.frameNum); // All detected objects
 				m_alertCount = m_tracker.getAlertObjectsCount(); // Alert objects - all exceeds maxAllowed 
-
-				if (m_objectCount != m_alertCount)
-					int debug = 10;
 			}
 			catch (const std::exception& err) {
-				LOGGER::log(DLEVEL::ERROR1, "Error algProcess main process (convert & m_tracker.process():");
+				LOGGER::log(DLEVEL::ERROR1, "Exception : algProcess main process (convert & m_tracker.process():");
 				LOGGER::log(DLEVEL::ERROR1, err.what());
 			}
 
+			if (m_objectCount >= MAX_OBJECTS) {
+				LOGGER::log(DLEVEL::ERROR2, "Error: MAX_OBJECTS exceeded in algoProcess , objects detected =" + std::to_string(m_objectCount));
+				LOGGER::log(DLEVEL::ERROR2, "   ... prune objects , leave the last " + std::to_string(MAX_OBJECTS));
+				m_objectCount = MAX_OBJECTS;
+			}
 
 			float elapsed = m_timer.sample();
 
-			//if (m_frameNum % 60 == 0)    std::cout << "Algo duration: " << elapsed << " milliseconds" << std::endl;
-
 			// DDEBUG : for consoleApplication2 : getbjectData() API  
 			//---------------------------------------
-			bool supportGetbjectData = true; // DDEBUG
-			if (supportGetbjectData) {
+			if (m_supportGetbjectData) {
 				std::lock_guard<std::mutex> bufferLockGuard(m_BufferMutex);
 				m_pObjectsAPI.clear();
 				for (int i = 0; i < m_objectCount; i++)
@@ -299,18 +299,13 @@ CAlgoProcess::~CAlgoProcess()
 			for (; i < MAX_OBJECTS; i++)
 				m_Objects[i].frameNum = -1;
 
-#if 0
-			// DDEBUG DDEBUG DISPLAY ================================================================================================================
-			if (m_youDraw) {
-				float displayScale = 0.5;
-				int key = draw(m_height, m_width, frameBuff.ptr, m_pObjectsAPI, std::vector <CAlert_>(), m_frameNum);
-				cv::imshow("DLL draw", frameBGR);
-				cv::waitKey(1);
-			}
-#endif 
 			//=======================================================================================================================================
 			// POST PROCESS AREA:
 			//=======================================================================================================================================
+
+			if (1) // DDEBUG PRINT 
+				if (m_objectCount > 0)
+					LOGGER::log(DLEVEL::INFO2, std::string("Cam " + std::to_string(m_videoIndex) + " Detects : " + std::to_string(m_objectCount) + "objects"));
 
 
 			//-------------------------------------------------------------------------
@@ -319,8 +314,7 @@ CAlgoProcess::~CAlgoProcess()
 			try {
 				if (m_callback != nullptr && m_objectCount > 0)
 				{
-					if (1) std::string logMsg = "Cam " + std::to_string(m_videoIndex) + " Detects : " + std::to_string(m_objectCount) + "objects"; // DDEBUG DDEBUG PRINT LOGGER::log(DLEVEL::INFO2, logMsg);}
-					m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
+					m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0, m_ts);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
 				}
 			}
 			catch (const std::exception& err) {
@@ -344,17 +338,10 @@ CAlgoProcess::~CAlgoProcess()
 				info.status = OBJECT_STATUS::DONE;
 				if (loader->isActive()) {
 					loader->ResQueuePush(info);
-					loader->ResQueueNotify(); // not used in case of 'naive' sync by counting the 'ResQueue' !!!!
+					//loader->ResQueueNotify(); // not used in case of 'naive' sync by counting the 'ResQueue' !!!!
 				}
 			}
-
-
-			if (m_videoIndex == 0) // DDEBUG DDEBUG DDEBUG 
-			{
-				bool debug = loader->isCamInBatchList(m_videoIndex);
-				debug = false;
-			}
-
+			 
 			//frameCount++;
 		} // while !terminate
 
@@ -381,7 +368,7 @@ CAlgoProcess::~CAlgoProcess()
 
 		m_timer.start();
 
-		cv::Mat frameBGR = converPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
+		cv::Mat frameBGR = convertPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
 		m_objectCount = m_tracker.process(frameBGR, m_Objects, frameBuff.frameNum);
 
 		m_timer.sample();
@@ -390,8 +377,8 @@ CAlgoProcess::~CAlgoProcess()
 			AIobjects[i] = m_Objects[i];
 
 
-		//frameCount++;
 
+		/*
 		if (frameCount % 30 == 0) {
 			std::cout << " FPS = " << 1000. / (g_elapsedSum / 30.) << " ( min / max = " << (1000. / g_elapsedMin) << " , " << (1000. / g_elapsedMax) << "\n";
 			g_elapsedSum = 0;
@@ -400,19 +387,10 @@ CAlgoProcess::~CAlgoProcess()
 
 			frameCount = 0;
 		}
+		*/
 
 		return m_objectCount;
 
-	}
-
-	// DDEBUG DDEBUG functions:
-	void CAlgoProcess::fakeCallBack(int m_videoIndex, ALGO_DETECTION_OBJECT_DATA* pObjects, int m_objectCount, void* ptr, int something)
-	{
-		if (m_objectCount)
-			std::cout << "CAlgoProcess::fakeCallBack: detected objects = " << m_objectCount << "\n";
-
-		for (int i = 0; i < m_objectCount; i++)
-			std::cout << "			>>	type = " << pObjects[i].ObjectType << "\n";
 	}
 
 	/*---------------------------------------------------------------------------------------------------

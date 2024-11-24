@@ -4,6 +4,8 @@
 #include <vector>
 #include <fstream> 
 #include <algorithm>
+#include <shared_mutex>
+#include <sys/stat.h> // isFolderExist()
 
 #include <boost/lexical_cast.hpp> 
 
@@ -100,15 +102,21 @@ inline std::vector <float> RAD2DEG_vec(std::vector <float>  radVec) { std::vecto
 
 
 cv::Rect2f  moveByCenter(cv::Rect2f r, cv::Point2f center);
-inline cv::Point2f centerOf(cv::Rect2f r) { return (r.br() + r.tl()) * 0.5; }
-inline cv::Point centerOf(cv::Rect r) { return cv::Point((r.br() + r.tl()) * 0.5); }
-inline int areaOf(cv::Rect2f r) { return int(r.width + r.height); }
+inline cv::Point2f centerOf(cv::Rect2f r);// { return (r.br() + r.tl()) * 0.5; }
+inline cv::Point centerOf(cv::Rect r);// { return cv::Point((r.br() + r.tl()) * 0.5); }
+inline int areaOf(cv::Rect2f r);// { return int(r.width + r.height); }
 
 inline bool isEmpty(cv::RotatedRect rr) { return (rr.size.width == 0 || rr.size.height == 0); }
 inline bool isEmpty(cv::Rect2f r) { return (r.width == 0 || r.height == 0); }
 cv::Rect resize(cv::Rect r, cv::Size newDim); 
 bool similarAreas(cv::Rect r1, cv::Rect r2, float absRatio);
 bool similarBox(cv::Rect r1, cv::Rect r2, float absRatio);
+
+inline cv::Point boxCenter(cv::Rect box)
+{
+	return (box.br() + box.tl()) * 0.5;
+}
+
 
 template <typename T>
 bool similarBox2(T r1, T r2, float absRatio)
@@ -199,12 +207,21 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 	 //static cv::Rect   mergeBBoxes2(cv::Rect rect1, cv::Rect rect2, float AlphaBland);
 
 
-	 static bool isFileExist(std::string fname) 
+	 static bool isFileExist(std::string fname)
 	 {
 		 std::string fileName(fname);
 		 ifstream fin(fileName.c_str());
 		 return (!fin.fail());
 		 //return (0xffffffff = !GetFileAttributes(LPCSTR(fname.c_str()));
+	 }
+
+	 static bool isFolderExist(std::string folderName)
+	 {
+		 struct stat info;
+
+		 int ret = stat(folderName.c_str(), &info);
+
+		 return ret == 0 ;
 	 }
 
  };
@@ -259,17 +276,6 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 
 	 // Y version 
 	 cv::Mat euler2rot_2(cv::Vec3f euler3);
-
-	 // DDEBUG DDEBUG TEMP
-	 /*
-	 cv::Mat rot2euler_CV(cv::Mat_<float>  rotationMatrix);
-	 cv::Mat euler2rot_CV(cv::Vec3f euler3);
-	 cv::Vec3f rot2euler_1(cv::Mat_<float>  rotationMatrix);
-	 cv::Mat   euler2rot_1(cv::Vec3f euler3);
-	 // learnOpencv
-	 cv::Vec3f rot2euler_3(cv::Mat_<float> R);
-	 cv::Mat   euler2rot_3(cv::Vec3f theta);
-	  */
  }
 
 
@@ -284,25 +290,56 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
  cv::Rect resizeBBox(cv::Rect rect, float scale);
  cv::Rect2f resizeBBox(cv::Rect2f rect, float scale);
  cv::Rect2f resizeBBox(cv::Rect2f rect, cv::Size size, float scale);
+
+ // Maker tools
  void blendBbox(cv::Rect2f &r1, cv::Rect2f r2, float alpha = 0.3);
+ cv::Rect makeABox(cv::Point center, int width, int height);
+
 
  
  float bboxesBounding(cv::Rect2f r1, cv::Rect2f r2); // Ratio of r1 overlapping r2
- float OverlappingRatio(cv::Rect2f r1, cv::Rect2f r2); // Ratio of overlapping (bi directional)
+ //float OverlappingRatio(cv::Rect2f r1, cv::Rect2f r2); // Ratio of overlapping (bi directional)
 
- // Max Ratio of r1 & r2 overlapping 
+
+ /*---------------------------------------------------------------------------------
+  * Ratio of overlap area to the area of the LARGER rectangle
+  * Use (among others?) for static object check 
+  -----------------------------------------------------------------------------------*/
  template <typename T>
- float OverlappingRatio2(T r1, T r2)
+ float OverlappingRatio(T r1, T r2)
  {
-	 int overlappedArea = (r1 & r2).area();
+	 float overlappedArea = (float)((r1 & r2).area());
 	 if (overlappedArea == 0)
 		 return 0;
 
-	 return   r1.area() < r2.area() ? overlappedArea / r1.area() : overlappedArea / r2.area();
+	 return   r1.area() > r2.area() ? overlappedArea / (float)r1.area() : overlappedArea / (float)r2.area();
+ }
+
+
+ /*---------------------------------------------------------------------------------
+  * Ratio of overlap area to the area of the FIRST rectangle
+  * Use (among others?) for static object check
+  -----------------------------------------------------------------------------------*/
+ template <typename T>
+ float OverlappingRatio_subjective(T r1, T r2) // old 'bboxesBounding()'
+ {
+	 T overlappedBox = r1 & r2;
+	 if (overlappedBox.area() == 0)
+		 return 0;
+
+	 return (float)overlappedBox.area() / (float)r1.area();
+ }
+
+ template <typename T>
+ float BoxRatio(T r1, T r2)
+ {
+	 int area1 = r1.area();
+	 int area2 = r2.area();
+	 return   area1 < area1 ? area1/area2 : area2 / area1;
  }
 
  int depth2cvType(int depth);
- cv::Mat converPTR2MAT(void* data, int height, int width, int depth);
+ cv::Mat convertPTR2MAT(void* data, int height, int width, int depth);
 
  namespace GPU_UTIL {
 
@@ -312,3 +349,178 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 	 bool cudaMemGetInfo_(size_t& l_free, size_t& l_Total);
 
  }
+
+#if 0
+ /*------------------------------------------------------------------------
+ * THREAD SAFE VECTOR, ALLOWS SAFE ACCESS (READ, RIGHT AND FIND) TO VECTOR
+ ------------------------------------------------------------------------*/
+ template <typename T>
+ class ThreadSafeVector_ {
+ private:
+	 std::vector<T> vec;      // Underlying vector
+	 mutable std::mutex mtx;  // Mutex to protect the vector
+	 //mutable std::shared_mutex mtx;  // Mutex to protect the vector
+
+ public:
+	 // Default constructor
+	 ThreadSafeVector_() = default;
+
+	 // Add an element to the vector
+	 void push_back(const T& value) {
+		 std::lock_guard<std::mutex> lock(mtx);
+		 vec.push_back(value);
+	 }
+
+	 // Remove the last element from the vector
+	 void pop_back() {
+		 std::lock_guard<std::mutex> lock(mtx);
+		 if (!vec.empty()) {
+			 vec.pop_back();
+		 }
+		 else {
+			 throw std::out_of_range("Attempted to pop from an empty vector");
+		 }
+	 }
+
+	 // Get an element at a specific index (thread-safe)
+	 T get(size_t index) const {
+		 std::lock_guard<std::mutex> lock(mtx);
+		 if (index >= vec.size()) {
+			 throw std::out_of_range("Index out of range");
+		 }
+		 return vec[index];
+	 }
+
+	 // Set an element at a specific index (thread-safe)
+	 void set(size_t index, const T& value) {
+		 std::lock_guard<std::mutex> lock(mtx);
+		 if (index >= vec.size()) {
+			 throw std::out_of_range("Index out of range");
+		 }
+		 vec[index] = value;
+	 }
+
+	 // Get the size of the vector (thread-safe)
+	 size_t size() const {
+		 std::lock_guard<std::mutex> lock(mtx);
+		 return vec.size();
+	 }
+
+	 /*------------------------------
+	  * FIND LOCATION OF 0 (=FREE)
+	 --------------------------------*/
+	 int findFree()
+	 {
+		 std::lock_guard<std::shared_mutex> lock(mtx);
+		 auto it = std::find(vec.begin(), vec.end(), 1);
+		 if (it == vec.end())
+			 return -1;
+		 else
+			 return std::distance(vec.begin(), it);
+	 }
+
+	 // Check if the vector is empty (thread-safe)
+	 bool empty() const {
+		 std::lock_guard<std::mutex> lock(mtx);
+		 return vec.empty();
+	 }
+ };
+
+#endif 
+
+ 
+ template <typename T>
+ class ThreadSafeVector {
+ private:
+	 std::vector<T> vec;      // Underlying vector
+	 mutable std::shared_mutex mtx;  // Mutex to protect the vector
+
+ public:
+	 // Default constructor
+	 ThreadSafeVector() = default;
+
+	 // Add an element to the vector
+	 void push_back(const T& value) {
+		 std::lock_guard<std::shared_mutex> lock(mtx);
+		 vec.push_back(value);
+	 }
+
+	 // Remove the last element from the vector
+	 void pop_back() {
+		 std::lock_guard<std::shared_mutex> lock(mtx);
+		 if (!vec.empty()) {
+			 vec.pop_back();
+		 }
+		 else {
+			 throw std::out_of_range("Attempted to pop from an empty vector");
+		 }
+	 }
+
+
+	 void clear() {
+		 vec.clear();
+	 }
+
+	 // Get an element at a specific index (thread-safe)
+	 T get(size_t index) const 
+	 {
+		 std::shared_lock<std::shared_mutex> lock_shared(mtx);
+		 if (index >= vec.size()) {
+			 throw std::out_of_range("Index out of range");
+		 }
+		 return vec[index];
+	 }
+
+	 // Set an element at a specific index (thread-safe)
+	 void set(size_t index, const T& value) 
+	 {
+		 std::lock_guard<std::shared_mutex> lock(mtx);
+		 if (index >= vec.size()) {
+			 throw std::out_of_range("Index out of range");
+		 }
+		 vec[index] = value;
+	 }
+
+	 // Get the size of the vector (thread-safe)
+	 size_t size() const {
+		 std::lock_guard<std::shared_mutex> lock(mtx);
+		 return vec.size();
+	 }
+
+	 bool findVal(const T& value)
+	 {
+		 std::shared_lock<std::shared_mutex> lock(mtx);
+		 auto it = std::find(vec.begin(), vec.end(), value);
+		 if (it == vec.end())
+			 return false;
+		 else
+			 return true;
+	 }
+	 /*------------------------------
+	  * FIND LOCATION OF 0 (=FREE)
+	 --------------------------------*/
+	 int findFree()
+	 {
+		 std::shared_lock<std::shared_mutex> lock(mtx);
+		 auto it = std::find(vec.begin(), vec.end(), 1);
+		 if (it == vec.end())
+			 return -1;
+		 else
+			 return std::distance(vec.begin(), it);
+	 }
+
+	 // Check if the vector is empty (thread-safe)
+	 bool empty() const {
+		 std::lock_guard<std::shared_mutex> lock(mtx);
+		 return vec.empty();
+	 }
+ };
+
+
+
+
+
+std::string toUpper(std::string str);
+
+cv::Rect enlargeBbox( cv::Rect srcBbox, cv::Size dstDim , cv::Size frameDim = cv::Size());
+

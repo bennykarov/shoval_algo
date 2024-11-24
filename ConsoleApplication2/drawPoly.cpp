@@ -122,6 +122,13 @@
         camfile.close();
         return true;    
     }
+
+    bool isImageFile(std::string fname)
+	{
+		std::string ext = fname.substr(fname.find_last_of(".") + 1);
+		return (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "bmp");
+	}
+
     /*------------------------------------------------------------------------------------------------------
     * Write a new CAMERA.JSON file:
     * input params:
@@ -146,7 +153,11 @@
 
 
         //
-        if (1) {
+        cameraNname = change_extension(imageNname, "json");
+
+        if (isImageFile(imageNname))
+            image = cv::imread(imageNname);
+        else  {
             cv::VideoCapture cap;
 
             if (!cap.open(imageNname)) {
@@ -154,16 +165,12 @@
                 return -1;
             }
 
-            cameraNname = change_extension(imageNname, "json");
-
             cap >> image;
 
             if (1) // many records has empty frames at start
                 for (int i=0;i<100;i++)
                     cap >> image;
         }
-        else
-            image = cv::imread(imageNname);
 
         // Check if the image was loaded successfully
         if (image.empty()) {

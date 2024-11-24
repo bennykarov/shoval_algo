@@ -6,6 +6,11 @@
 #include <vector>
 #include <codecvt>
 
+#include <map>
+#include <thread>
+#include <shared_mutex>  // C++17
+
+
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include "opencv2/core/cuda.hpp"
@@ -22,6 +27,14 @@ namespace efs = std::experimental::filesystem;
 namespace fs = std::filesystem;
 
 
+
+
+
+std::string toUpper(std::string str)
+{
+	std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+	return str;
+}
   std::wstring stringToWstring(const std::string& t_str)
   {
 	  //setup converter
@@ -121,6 +134,8 @@ namespace fs = std::filesystem;
 	  return (hitPixel.x > roi.x   && hitPixel.x < roi.br().x &&
 		  hitPixel.y > roi.y   && hitPixel.y < roi.br().y);
   }
+
+
 
   //===========================================================================================
   //   G E O    U T I L S
@@ -627,6 +642,7 @@ namespace fs = std::filesystem;
 	  return area1 > area2 ? (float)area2 / (float)area1 : (float)area1 / (float)area2;
   }
 
+#if 0
   // Ratio of RECTs area with order : r1 / r2
   float bboxOrderRatio(cv::Rect2f r1, cv::Rect2f r2)
   {
@@ -635,8 +651,7 @@ namespace fs = std::filesystem;
 
 	  return (float)area1 / (float)area2;
   }
-
-  // Ratio of overlapping in r1 (order sensative) 
+  // Ratio of overlapping of r1 (order sensative) 
   float bboxesBounding(cv::Rect2f r1, cv::Rect2f r2)
   {
 	  cv::Rect2f overlappedBox = r1 & r2;
@@ -654,17 +669,7 @@ namespace fs = std::filesystem;
 
 	  return (float)overlappedBox.area() / (float)r1.area();
   }
-
-  // Max Ratio of r1 & r2 overlapping 
-  float OverlappingRatio(cv::Rect2f r1, cv::Rect2f r2)
-  {
-	  //cv::Rect2f overlappedBox = r1 & r2;
-	  int overlappedArea = (r1 & r2).area();
-	  if (overlappedArea == 0)
-		  return 0;
-
-	  return   r1.area() < r2.area() ? overlappedArea / r1.area() : overlappedArea / r2.area();
-  }
+#endif 
 
   /*-------------------------------------------
    * Alpha blanding for RECT
@@ -677,6 +682,21 @@ namespace fs = std::filesystem;
 	  moveByCenter(r1, blendedCenter);
   }
 
+
+  cv::Rect makeABox(cv::Point center, int width, int height)
+  {
+	  cv::Rect box;
+	  box.x = center.x - int((float)width / 2.);
+	  box.x = max(0, box.x);
+	  box.y = center.y - int((float)height / 2.);
+	  box.y = max(0, box.y);
+	  box.width = width;
+	  box.height = height;
+
+	  return box;
+  }
+
+
   cv::Rect centerBox(cv::Point center, cv::Size size)
   {
 	  cv::Rect box;
@@ -687,6 +707,7 @@ namespace fs = std::filesystem;
 
 	  return box;
   }
+
 
   double interpolate(vector<double> &xData, vector<double> &yData, double x, bool extrapolate)
   {
@@ -790,6 +811,9 @@ namespace fs = std::filesystem;
 	  return (ratio >= absRatio );
   }
 
+  /*-----------------------------------------------------------------
+  * Check if box dimension is similar to the other by absRatio
+   ------------------------------------------------------------------*/
   bool similarBox(cv::Rect r1, cv::Rect r2, float absRatio)
   {
 	  float ratio = (float)r1.width / (float)r2.width;
@@ -846,7 +870,7 @@ namespace fs = std::filesystem;
 	  }
   }
 
-  cv::Mat converPTR2MAT(void* data, int height, int width, int depth)
+  cv::Mat convertPTR2MAT(void* data, int height, int width, int depth)
   {
 	  	cv::Mat frameBGR;
 		cv::Mat frameRaw = cv::Mat(height, width, depth2cvType(depth), data);
@@ -943,3 +967,40 @@ namespace fs = std::filesystem;
 		  return true;
 
   }
+
+  /*-------------------------------------------------------------------------------
+  * Enlarge BBox to a given size, consider frame dimension as well
+   -------------------------------------------------------------------------------*/
+  cv::Rect enlargeBbox(cv::Rect srcBox, cv::Size dstDim, cv::Size frameDim)
+  {
+	  cv::Rect retBox = srcBox;
+
+	  if (srcBox.width < dstDim.width)
+		  retBox.width = dstDim.width;
+	  if (srcBox.height < dstDim.height)
+		  retBox.height = dstDim.height;
+
+	  retBox.x -= int(float(retBox.width - srcBox.width) / 2.);
+	  retBox.y -= int(float(retBox.height - srcBox.height) / 2.);
+
+	  if (!frameDim.empty()) {
+		  if (retBox.br().x + retBox.width > frameDim.width)
+			  retBox.width = frameDim.width - retBox.br().x - 1;  // Shift X back
+		  if (retBox.br().y + retBox.height > frameDim.height)
+			  retBox.height = frameDim.height - retBox.br().y - 1;  // Shift X back
+	  }
+
+	  retBox.x = max(0, retBox.br().x);
+	  retBox.y = max(0, retBox.br().y);
+
+
+	  // Missing Check shift back - DDEBUG 
+
+	  return retBox;
+  }
+
+
+  inline cv::Point2f centerOf(cv::Rect2f r) { return (r.br() + r.tl()) * 0.5; }
+  inline cv::Point centerOf(cv::Rect r) { return cv::Point((r.br() + r.tl()) * 0.5); }
+  inline int areaOf(cv::Rect2f r) { return int(r.width + r.height); }
+

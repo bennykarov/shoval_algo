@@ -27,21 +27,6 @@ Scalar BLUE = Scalar(255, 178, 50);
 Scalar YELLOW = Scalar(0, 255, 255);
 Scalar RED = Scalar(0, 0, 255);
 
-void draw_label(Mat& input_image, string label, int left, int top)
-{
-    // Display the label at the top of the bounding box.
-    int baseLine;
-    Size label_size = getTextSize(label, FONT_FACE, FONT_SCALE, THICKNESS, &baseLine);
-    top = max(top, label_size.height);
-    // Top left corner.
-    Point tlc = Point(left, top);
-    // Bottom right corner.
-    Point brc = Point(left + label_size.width, top + label_size.height + baseLine);
-    // Draw white rectangle.
-    rectangle(input_image, tlc, brc, BLACK, FILLED);
-    // Put the label on the black rectangle.
-    putText(input_image, label, Point(left, top + label_size.height), FONT_FACE, FONT_SCALE, YELLOW, THICKNESS);
-}
 
 
 
@@ -70,25 +55,14 @@ vector<Mat> pre_process(Mat& input_image, Net& net)
 
     // DDEBUG - enhance image :   -------------------------------------
     cv::Mat gray,imgEnhanced;
-    if (1) {
-        if (input_image.channels() > 1)
-            cv::cvtColor(input_image, gray, cv::COLOR_BGR2GRAY);
-        else
-            gray = input_image;
-        
-        
-
-		// if (0)  cv::adaptiveThreshold(gray, input_image, 255, /*cv::ADAPTIVE_THRESH_MEAN_C*/ cv::ADAPTIVE_THRESH_GAUSSIAN_C ,  cv::THRESH_BINARY, /*cv::THRESH_BINARY_INV */ 51, 0);
-        /*
-        if (0)
-			cv::equalizeHist(gray, input_image); //DDEBUG enhance
-		
-		if (0) // DDEBUG
-			cv::GaussianBlur(gray, imgEnhanced, cv::Size(5, 5), 3.0, 3.0);
-		*/
-    }
-    else
-        imgEnhanced = input_image;
+	if (1) {
+		if (input_image.channels() > 1)
+			cv::cvtColor(input_image, gray, cv::COLOR_BGR2GRAY);
+		else
+			gray = input_image;
+	}
+	else
+		imgEnhanced = input_image;
     //----------------------------------------------------------------- 
     // Convert to blob.
     Mat blob;
@@ -115,7 +89,7 @@ vector<Mat> pre_process(Mat& input_image, Net& net)
 
 bool CYolo8::load_net(bool is_cuda)
 {
-    //auto result = cv::dnn::readNetFromONNX(m_modelFolder + YOLO_MODEL_NAME); // DDEBUG DDEBUG 
+    //auto result = cv::dnn::readNetFromONNX(m_modelFolder + YOLO_MODEL_NAME);  
     auto result = cv::dnn::readNet(m_modelFolder + YOLO_MODEL_NAME);
 
     if (result.empty())
@@ -199,10 +173,16 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
 
         minMaxLoc(scores, 0, &maxClassScore, 0, &class_id);
 
+                
 
-        float scoreThreshold = (class_id.x == 0) ? YOLO_PERSON_CONFIDENCE_THRESHOLD : YOLO_CONFIDENCE_THRESHOLD;
-        if (maxClassScore > scoreThreshold)
+
+        //float scoreThreshold = (class_id.x == 0) ? YOLO_PERSON_CONFIDENCE_THRESHOLD : YOLO_CONFIDENCE_THRESHOLD;
+        if (maxClassScore >= YOLO_MIN_CONFIDENCE)
         {
+            if (class_id.x == 0)
+                int debug = 10;
+
+
             confidences.push_back(maxClassScore);
             class_ids.push_back(class_id.x);
 
@@ -217,13 +197,7 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
             int width = int(w * x_factor);
             int height = int(h * y_factor);
 
-            boxes.push_back(cv::Rect(left, top, width, height));
-        }
-        else
-        {
-            // DDEBUG DDEBUG DDEBUG 
-            if (class_id.x == 0 && maxClassScore > 0.1)
-                std::cout << "DEBUG INFO : Low Person score " << maxClassScore << "\n";
+            boxes.push_back(cv::Rect(left, top, width, height)); 
         }
 
         data += dimensions; // 85 in 5?
@@ -235,7 +209,8 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
     */
 
     std::vector<int> nms_result;
-    float scoreThreshold = YOLO_PERSON_CONFIDENCE_THRESHOLD; // YOLO_PERSON_CONFIDENCE_THRESHOLD;
+    //float scoreThreshold = YOLO_PERSON_CONFIDENCE_THRESHOLD; // YOLO_PERSON_CONFIDENCE_THRESHOLD;
+    float scoreThreshold = YOLO_MIN_CONFIDENCE;
     cv::dnn::NMSBoxes(boxes, confidences, scoreThreshold, NMS_THRESHOLD, nms_result);
     for (int i = 0; i < nms_result.size(); i++) {
         int idx = nms_result[i];
@@ -244,7 +219,7 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
         result.confidence = confidences[idx];
         result.box = boxes[idx];
         output.push_back(result);
-
+        //if (result.class_id == 0)   std::cout << "DDEBUG DDEBUG : Person x = " << result.box.br() << "detected with confidence " << result.confidence << "\n";
     }
 }
 
@@ -258,38 +233,7 @@ cv::Rect CYolo8::optimizeRect(cv::Rect r, cv::Size dim)
     if (dim.width <= 640 && dim.height <= 480) 
         return (cv::Rect(0, 0, dim.width, dim.height));
     else
-        return r;
-
-#if 0
-    cv::Rect finalRect = r;
-    // Here frame dim > 640 * 480
-    if (r.width < 640) {
-            finalRect.x -= 640 / 2;
-            finalRect.width += 640 / 2;
-            // Increase width
-            if (finalRect.x < 0) {
-                finalRect.width += -finalRect.x;
-                finalRect.x = 0;
-            }
-            else if (r.width > 640) {
-                finalRect.width = 640;
-                finalRect.x -= r.width - 640;
-            }
-
-            // Increase height
-            if (finalRect.y < 0) {
-                finalRect.height += -finalRect.y;
-                finalRect.y = 0;
-            }
-            else if (r.height > 480) {
-                finalRect.height = 480;
-                finalRect.y -= r.height - 640;
-            }
-
-        return finalRect;
-
-    }
-#endif 
+        return r; 
 
 }
 
@@ -314,92 +258,4 @@ int test_yolo(cv::Mat frame)
 
 }
 */
-//-----------------------------------------------------------------------------------------------------------
-//-----------------------------------------------------------------------------------------------------------
-//-----------------------------------------------------------------------------------------------------------
-#if 0
-Mat post_process(Mat& input_image, vector<Mat>& outputs, const vector<string>& class_name)
-{
-    // Initialize vectors to hold respective outputs while unwrapping     detections.
-    vector<int> class_ids;
-    vector<float> confidences;
-    vector<Rect> boxes;
 
-    int rows = outputs[0].size[2];
-    int dimensions = outputs[0].size[1];
-
-    outputs[0] = outputs[0].reshape(1, dimensions);
-    cv::transpose(outputs[0], outputs[0]);
-
-    float* data = (float*)outputs[0].data;
-
-    // Resizing factor.
-    float x_factor = input_image.cols / YOLO_INPUT_WIDTH;
-    float y_factor = input_image.rows / YOLO_INPUT_HEIGHT;
-
-    // Iterate through  detections.
-    //cout << "num detections  : " << rows << " " << dimensions << endl;
-    for (int i = 0; i < rows; ++i)
-    {
-        float* classes_scores = data + 4;
-
-        cv::Mat scores(1, class_name.size(), CV_32FC1, classes_scores);
-        cv::Point class_id;
-        double maxClassScore;
-
-        minMaxLoc(scores, 0, &maxClassScore, 0, &class_id);
-
-
-        //if (class_id.x == 0)  int debug = 10;
-
-        float scoreThreshold = (class_id.x == 0) ? YOLO_PERSON_CONFIDENCE_THRESHOLD : YOLO_CONFIDENCE_THRESHOLD;
-        if (maxClassScore > scoreThreshold)
-        {
-            confidences.push_back(maxClassScore);
-            class_ids.push_back(class_id.x);
-
-            float x = data[0];
-            float y = data[1];
-            float w = data[2];
-            float h = data[3];
-
-            int left = int((x - 0.5 * w) * x_factor);
-            int top = int((y - 0.5 * h) * y_factor);
-
-            int width = int(w * x_factor);
-            int height = int(h * y_factor);
-
-            boxes.push_back(cv::Rect(left, top, width, height));
-        }
-        else
-        {
-            // DDEBUG DDEBUG DDEBUG 
-            if (class_id.x == 0 && maxClassScore > 0.1)
-                std::cout << "DEBUG INFO : Low Person score " << maxClassScore << "\n";
-        }
-
-        data += dimensions;
-    }
-    // Perform Non-Maximum Suppression and draw predictions.
-    vector<int> indices;
-    NMSBoxes(boxes, confidences, YOLO_CONFIDENCE_THRESHOLD, NMS_THRESHOLD, indices);
-    //cout << "num detections finally : "<< indices.size() <<endl;
-    for (int i = 0; i < indices.size(); i++)
-    {
-        int idx = indices[i];
-        Rect box = boxes[idx];
-        int left = box.x;
-        int top = box.y;
-        int width = box.width;
-        int height = box.height;
-        // Draw bounding box.
-        rectangle(input_image, Point(left, top), Point(left + width, top + height), BLUE, 3 * THICKNESS);
-        // Get the label for the class name and its confidence.
-        string label = format("%.2f", confidences[idx]);
-        label = class_name[class_ids[idx]] + ":" + label;
-        // Draw class labels.
-        draw_label(input_image, label, left, top);
-    }
-    return input_image;
-}
-#endif 

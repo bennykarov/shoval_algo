@@ -40,7 +40,7 @@ public:
 	//int run(TSBuffQueue* bufQ, AutoResetNumericEvent* camRes) { return 0; } // DDEBUG 
 	int run_sync(void* pData, int frameNum, ALGO_DETECTION_OBJECT_DATA* AIobjects);
 	int run_th2(TSBuffQueue* bufQ, CLoadBalaner* loader);
-
+	int debugSaveDetections();
 	/*
 	int run(TSBuffQueue* bufQ);
 	int run_th(TSBuffQueue* bufQ);
@@ -69,6 +69,7 @@ private:
 	
 	std::atomic_bool m_terminate = false;
 	int m_frameNum = -1;
+	uint64_t m_ts = -1;
 	int m_videoIndex;
 
 	int m_width = 0;

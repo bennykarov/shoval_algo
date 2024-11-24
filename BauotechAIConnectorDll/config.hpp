@@ -2,9 +2,8 @@
 
 
 #define MAX_OBJECTS 30 
-// #define MAX_CAMERAS 40 
 
-const bool YOLO_MNGR = true; // YOLO detectors limiter 
+const bool YOLO_MNGR = false; // YOLO detectors limiter 
 
 
 namespace CONSTANTS {
@@ -23,6 +22,8 @@ namespace CONSTANTS {
 	int const DEFAULT_STEP_FRAMES_YOLO = 1; // 10;   // Process yolo in constant intervals 
 
 	int const DEFAULT_LOADBALANCER_RESOURCE = 4;
+
+	const float MAX_BATCH_PERIOD = 1000.*0.5; // 0.5 sec
 
 };
 
@@ -62,13 +63,15 @@ struct Config
 	int stepDetectionFrames = CONSTANTS::DEFAULT_STEP_FRAMES_YOLO; // YOLO steps 
 
 	// Algo
-	int motionType = 2;
+	int motionDetectionType = 0;
 	int trackerType = 0;
 	int trackerStep = 1;
 	int MLType = 10;
 	float scale = 1.0; // 0.5;
 	int waitKeyTime=1;
 	int record = 0;
+
+	int debugTraceCamID = -1;
 
 	// MOG2 params:
 	int MHistory = 50;
@@ -77,6 +80,7 @@ struct Config
 	float MlearningRate = -1.;
 	int useGPU = 1;
 	int GPUBatchSize = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
+	int LB_scheme = 0;
 	std::vector <int> camROI = { 0,0,0,0 }; // RECT 
 	cv::Rect  motionROI;
 	};

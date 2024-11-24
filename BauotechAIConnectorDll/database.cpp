@@ -292,11 +292,20 @@ bool FILE_UTILS::readConfigFile(std::string ConfigFName, Config& conf)
     conf.MHistory = pt.get<int>("ALGO.MHistory", conf.MHistory);
     conf.MvarThreshold = pt.get<float>("ALGO.MvarThreshold", conf.MvarThreshold);
     conf.MlearningRate = pt.get<float>("ALGO.MlearningRate", conf.MlearningRate);
-    conf.motionType = pt.get<int>("ALGO.motion", conf.motionType);
+    conf.motionDetectionType = pt.get<int>("ALGO.motionDetection", conf.motionDetectionType);
     conf.trackerType = pt.get<int>("ALGO.tracker", conf.trackerType);
     conf.trackerStep = pt.get<int>("ALGO.trackerStep", conf.trackerStep);
     conf.MLType = pt.get<int>("ALGO.ML", conf.MLType);
     conf.GPUBatchSize = pt.get<int>("ALGO.GPUBatchSize", conf.GPUBatchSize);
+    conf.LB_scheme = pt.get<int>("ALGO.scheme_LB", conf.LB_scheme);
+
+
+    //---------
+    // DEBUG:
+    //---------
+    conf.debugTraceCamID = conf.debugTraceCamID = pt.get<int>("DEBUG.debugTraceCamID", conf.debugTraceCamID);
+
+
 
     return true;
 }

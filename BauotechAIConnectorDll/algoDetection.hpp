@@ -50,16 +50,9 @@ public:
 	int process(cv::Mat frame, ALGO_DETECTION_OBJECT_DATA* pObjects, int frameNum);
 	int processFrame(cv::Mat &frame);
 
+	int debugSaveDetectionsImages(std::vector <CObject>	detectedObjs, std::vector <int> camIDs = std::vector <int>());
+
 	int getAlertObjectsCount() { return m_decipher.getAlertObjectsNum();  }
-	/*
-	void draw_old(cv::Mat& img, float scale);   // by Concluder (good objects)
-	void draw(cv::Mat& img, std::vector <CObject> detections, float scale);   // by Concluder (good objects)
-	void draw(cv::Mat &img, std::vector<YDetection> Youtput, float scale);   // for Yolo
-	void draw(cv::Mat &img, std::vector<cv::Rect>  rois, float scale);		 // for BGSeg
-	void drawInfo(cv::Mat &img);		
-	void drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale);
-	int getDetectionCount();
-	*/
 	void setDrawing(bool flag) {  doDrawing = flag; }
 
 
@@ -80,7 +73,6 @@ private:
 	int m_lastFrameNum_motion = -100;
 	int m_lastFrameNum_tracking = -100;
 	int m_cycleNum = 0; // count actual processed frame#
-	//float m_calcScale = 0.5;
 	float m_scaleDisplay = 1.;// 0.7;
 	bool  m_motionDetectet = false;
 
@@ -92,11 +84,7 @@ private:
 	cv::Mat m_bgMask; // MOG2
 	cv::Mat m_display;
 
-	//CYolo5 m_yolo; // DDEBUG 
 	CYolo8 m_yolo;
-	//std::vector <std::shared_ptr<ST_yoloDetectors>> m_yoloST;
-	//ST_yoloDetectors2  m_yoloST;
-	//CMTracker       m_tracker;
 	CSiamTracker      m_tracker;
 	CDecipher m_decipher;
 	std::vector <CAlert> m_camerasInfo;
@@ -112,6 +100,7 @@ private:
 	std::vector <cv::Rect>  m_BGSEGoutputLarge; // Larger objects (not a human)
 
 	CBGSubstruct   m_bgSeg;
+	int m_bgSegHistory = 0; // +1 for motion frame, -1 for no motion frame
 	int m_colorDepth = 4;
 	Config m_params;
 	std::vector <CRoi2frame>  m_roiList;
@@ -119,5 +108,6 @@ private:
 	cv::Rect m_camROI = cv::Rect(0,0,0,0);
 	bool m_isCuda;
 	bool doDrawing = false;
+	bool m_motionOnly = false; // if all alerts are motion alerts
 
 };

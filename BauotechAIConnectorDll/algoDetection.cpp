@@ -25,9 +25,9 @@
 #include "CObject.hpp"
 
 #include "yolo/YOLO_mngr.hpp"
-//#include "yolo/yolo.hpp"
 #include "alert.hpp"
 #include "concluder.hpp"
+#include "logger.hpp"
 
 
 #include "utils.hpp"
@@ -43,40 +43,10 @@
 
 #include "algoDetection.hpp"
 
-#define MAX_PERSON_DIM	cv::Size(40, 90) // DDEBUG CONST
-#define MAX_OBJ_DIM	cv::Size(350, 350) // DDEBUG CONST	
+#define MAX_PERSON_DIM	cv::Size(40, 90) //  CONST
+#define MAX_OBJ_DIM	cv::Size(350, 350) //  CONST	
 
-/*
 
-#ifdef _DEBUG
-#pragma comment(lib, "opencv_core470d.lib")
-#pragma comment(lib, "opencv_highgui470d.lib")
-#pragma comment(lib, "opencv_video470d.lib")
-#pragma comment(lib, "opencv_videoio470d.lib")
-#pragma comment(lib, "opencv_imgcodecs470d.lib")
-#pragma comment(lib, "opencv_imgproc470d.lib")
-#pragma comment(lib, "opencv_tracking470d.lib")
-#pragma comment(lib, "opencv_dnn470d.lib")
-#pragma comment(lib, "opencv_bgsegm470d.lib")
-#ifdef USE_CUDA
-#pragma comment(lib, "opencv_cudabgsegm470d.lib")
-//#pragma comment(lib, "cuda.lib")
-#endif
-#else
-#pragma comment(lib, "opencv_core470.lib")
-#pragma comment(lib, "opencv_highgui470.lib")
-#pragma comment(lib, "opencv_video470.lib")
-#pragma comment(lib, "opencv_videoio470.lib")
-#pragma comment(lib, "opencv_imgcodecs470.lib")
-#pragma comment(lib, "opencv_imgproc470.lib")
-#pragma comment(lib, "opencv_tracking470.lib")
-#pragma comment(lib, "opencv_dnn470.lib")
-#pragma comment(lib, "opencv_bgsegm470.lib")
-#ifdef USE_CUDA
-#pragma comment(lib, "opencv_cudabgsegm470.lib")
-#endif
-#endif
-*/
 #ifdef _DEBUG
 #pragma comment(lib, "opencv_core4100d.lib")
 #pragma comment(lib, "opencv_highgui4100d.lib")
@@ -107,16 +77,14 @@
 #pragma comment(lib, "cudart.lib")
 #endif
 #endif
-
-
-
+#pragma comment(lib, "Version.lib")
 
 namespace  ALGO_DETECTOPN_CONSTS {
 	const int MIN_CONT_AREA = 20 * 10;
 	const int MAX_CONT_AREA = 1000 * 1000;
 	const float goodAspectRatio = 0.5;
 	const float aspectRatioTolerance = 0.2;
-	const int   MIN_PIXELS_FOR_MOTION = 10*10;
+	const int   MIN_PIXELS_FOR_MOTION = 6 * 6; // 10 * 10;
 }
 
 /*---------------------------------------------------------------------------------------------
@@ -135,11 +103,25 @@ void cObject_2_pObject(CObject cObject, ALGO_DETECTION_OBJECT_DATA* pObjects)
 
 	pObjects->ObjectType = (int)cObject.m_label;
 
-	//pObjects->DetectionPercentage = cObject.m_moving > 0 ? 0 : 9999; // DDEBUG DDEBUG mark static as 9999  under 'DetectionPercentage'
-	if (cObject.m_moving == 0)
-		pObjects->DetectionPercentage = 9999;  // DDEBUG DDEBUG mark static as 9999  under 'DetectionPercentage'
+	pObjects->DetectionPercentage = cObject.isMoving() ? int(cObject.m_confidence * 100.) : int(cObject.m_confidence * -100.); // DDEBUG set confidence Negative in case of Static object
+
+}
+
+
+bool showBGMask(cv::Mat  bgMask)
+{
+	cv::Mat display;
+
+
+	if (bgMask.size().width > 600)
+		cv::resize(bgMask, display, cv::Size(0, 0), 0.5, 0.5);
 	else
-		pObjects->DetectionPercentage = int(cObject.m_confidence * 100); // int - make it percents units (two floating digit)
+		display = bgMask;
+
+	cv::imshow("bgMask", display);
+	//cv::waitKey(1);
+
+	return true;
 }
 
 
@@ -148,7 +130,7 @@ void setConfigDefault(Config &params)
 	params.debugLevel = 0;
 	//params.showTruck = 0;
 	params.modelFolder = "C:/SRC/BauoSafeZone/config_files/";
-	params.motionType = 1;
+	params.motionDetectionType = 0;
 	params.MLType = 10;
 	params.MHistory = 100;
 	params.MvarThreshold = 580.0;
@@ -218,7 +200,15 @@ void setConfigDefault(Config &params)
 
 void CDetector::setCamerasInfo(std::vector <CAlert> camerasInfo)
 {  
-	m_camerasInfo = camerasInfo; 
+	m_camerasInfo = camerasInfo;
+
+	m_motionOnly = 0;
+
+	for (auto alert : m_camerasInfo) {
+		if (alert.m_motionType == 0)
+			m_motionOnly = 1;
+	}
+
 }
 
 bool CDetector::InitGPU()
@@ -287,7 +277,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		for (auto camInf : m_camerasInfo) 
 				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_motionType, camInf.m_maxAllowed, camInf.m_ployID); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
-			//---------------------------------------------------------------------------------------
+	//---------------------------------------------------------------------------------------
 
 
 		// if (m_isCuda) MessageBoxA(0, "RUN WITH GPU", "Info", MB_OK);   else  MessageBoxA(0, "RUN WITOUT GPU", "Info", MB_OK);
@@ -297,7 +287,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		{
 			if (!YOLO_MNGR) {
 				if (!m_yolo.init(m_params.modelFolder, m_isCuda)) {
-					std::cout << "Cant init YOLO net , quit \n";
+					LOGGER::log(DLEVEL::ERROR2, "Cant load ML model : " + m_params.modelFolder);
 					return false;
 				}
 			}
@@ -307,7 +297,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		}
 
 		// MOG2 
-		if (m_params.motionType ==  1)  {
+		if (m_params.motionDetectionType ==  1)  {
 			int emphasize = CONSTANTS::MogEmphasizeFactor;
 			m_bgSeg.init(m_params.MHistory, m_params.MvarThreshold, false, emphasize, m_isCuda);
 			m_bgSeg.setLearnRate(m_params.MlearningRate);
@@ -317,7 +307,8 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		if (m_params.trackerType > -1)
 			m_tracker.init(m_params.useGPU, TRACKER::scale, debugLevel); //siam tracker 
 		
-		m_decipher.init(cv::Size(m_width, m_height), m_params.debugLevel);
+		
+		m_decipher.init(m_cameraID, cv::Size(m_width, m_height), m_params.debugLevel);
 		m_decipher.setPersonDim(MAX_PERSON_DIM); 
 
 
@@ -339,20 +330,22 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 	 ------------------------------------------------------------*/
 	int CDetector::processFrame(cv::Mat &frame_)
 	{
-		// Reset process flags
-		m_bgMask.setTo(0);
-		m_BGSEGoutput.clear();
-		m_motionDetectet = 0;
 
 		cv::Mat frame = frame_;
 
 		// BG seg detection
 		//--------------------
 #if 1
+		m_bgMask.setTo(0);
+		m_BGSEGoutput.clear();
 		if (timeForMotion()) {
+			// Reset BGSEG flags
+			m_motionDetectet = 0;
+
 			m_bgMask = m_bgSeg.process(frame);
 			if (!m_bgMask.empty()) {
-				m_motionDetectet = cv::countNonZero(m_bgMask) > ALGO_DETECTOPN_CONSTS::MIN_PIXELS_FOR_MOTION;
+				int bgMaskNoZeroes = cv::countNonZero(m_bgMask);
+				m_motionDetectet = bgMaskNoZeroes > ALGO_DETECTOPN_CONSTS::MIN_PIXELS_FOR_MOTION;
 				std::vector <cv::Rect>  BGSEGoutput = detectByContours(m_bgMask);
 				for (auto obj : BGSEGoutput) {
 					if (obj.area() <= MAX_OBJ_DIM.width* MAX_OBJ_DIM.height)
@@ -361,16 +354,26 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 						m_BGSEGoutputLarge.push_back(obj);
 				}
 
+				if (!m_BGSEGoutput.empty()) {
+					m_bgSegHistory++;
+					std::cout << ">>> Motion detected : " << m_BGSEGoutput.size() << " objects, " << bgMaskNoZeroes << " pixels \n"; // DDEBUG PRINT 
+					//Beep(1200, 20);
+				}
+				//else m_bgSegHistory--;
+
 				m_lastFrameNum_motion = m_frameNum;
 
 			}
 		}
+		
 #endif 
 
 		// YOLO detection
 		//--------------------
 		m_Yolotput.clear();
-		if (timeForDetection()) {
+		//if (timeForDetection()) {
+		//if (timeForDetection() && !m_BGSEGoutput.empty()) { // ddebug test - dont YOLO if no motion detected
+		if (timeForDetection() && (m_params.motionDetectionType == 0 || !m_motionOnly || !m_BGSEGoutput.empty())) { // ddebug test 
 			if (YOLO_MNGR) {
 				auto yolo2 = ST_yoloDetectors::getInstance();
 				if (yolo2 == nullptr) {
@@ -381,9 +384,9 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 					yolo2->detect(frame, m_Yolotput);
 				}
 			}
-			else 
+			else
 				m_yolo.detect(frame, m_Yolotput);
-			
+
 			m_lastFrameNum_detection = m_frameNum;
 
 		}
@@ -409,7 +412,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		 * Deciphering YOLO &  tracker objects , 
 		 * Build the final detectedObject list 
 		 --------------------------------------------*/
-		m_decipher.track(mode);
+		m_decipher.track(mode, m_BGSEGoutput);
 
 		if (m_params.trackerType > -1) {
 			// Tracker postprocess:
@@ -448,10 +451,15 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 #endif 
 		}
 
-		if (m_params.debugLevel > 1 && !m_bgMask.empty()) {
-			cv::Mat display;
-			cv::resize(m_bgMask, display, cv::Size(0, 0), 0.5, 0.5);
-			cv::imshow("m_bgMask", display);
+		if (1) // DDEBUG SHOW BG_MASK 
+		{
+			if (m_bgMask.empty()) {
+				cv::Mat emptyMask = cv::Mat(m_frame.size(),CV_8U, cv::Scalar(0));
+				emptyMask  = m_bgSeg.optimizeImage(emptyMask);
+				showBGMask(emptyMask);
+			}
+			else 
+				showBGMask(m_bgMask);
 		}
 
 		int tracked_count=0;
@@ -477,8 +485,8 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		if (m_invertImg == 1)
 			cv::flip(frameRaw, m_frameOrg, 0);
-		else 
-			m_frameOrg = frameRaw; 
+		else
+			m_frameOrg = frameRaw;
 
 
 		m_frameROI = m_frameOrg(m_camROI);
@@ -504,19 +512,19 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 			}
 
 
-			for (int k = 0; k < detectedObjs.size(); k++)
+			// Note: limit the number of objects to const MAX_OBJECTS!
+			for (int k = 0; k < detectedObjs.size() && k < MAX_OBJECTS; k++)
 				cObject_2_pObject(detectedObjs[k], &pObjects[k]);
 		}
 
+		if (0) // DDEBUG SAVE DETECTION  IMAGE 
+			debugSaveDetectionsImages(detectedObjs);
+		//--------------------------------------------
+
 		if (0) // When Server will properly send the frameNum \ timestemp
 			m_frameNum = frameNum;
-		else 
+		else
 			m_frameNum++; // temp - while frameNum for server is missing !!!!!  15-9-24
-
-
-		if (m_frameNum == 355)
-			int debug = 10;
-
 
 		return detectedObjs.size();
 	}
@@ -542,18 +550,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 			if (area < ALGO_DETECTOPN_CONSTS::MIN_CONT_AREA || area > ALGO_DETECTOPN_CONSTS::MAX_CONT_AREA)
 				continue;
 
-			// FIlter outliers 
-			//rbox = cv::minAreaRect(cont);
-			/*
-			attrib.aspectRatio = attrib.rbox.size.height / attrib.rbox.size.width;
-			attrib.perimeter = cv::arcLength(cv::Mat(contours[i]), true);
-			attrib.thickness = attrib.perimeter / attrib.area;
-			attrib.close = (hierarchy[i][2] < 0 && hierarchy[i][3] < 0) ? -1 : 1;
-			attrib.len = MAX(attrib.rbox.size.width, attrib.rbox.size.height);
-			attrib.topLevel = hierarchy[i][3] == -1; // no paretn
-			*/
-			//cv::Rect debug = scaleBBox(box, 1. / 0.5);
-
 			UTILS::checkBounderies(box, bgMask.size());
 			newROIs.push_back(box);
 		}
@@ -576,10 +572,11 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 	}
 
 	// Get motion (bgseg) interval 
+	// Check motion only for motionOnly detection 
 	bool CDetector::timeForMotion()
 	{
-		return (m_params.motionType > 0 && !timeForDetection() && (m_frameNum - m_lastFrameNum_motion) >= m_params.stepMotionFrames);
-		//return (m_params.motionType > 0 && !timeForDetection() &&  (m_frameNum+1) % m_params.stepMotionFrames == 0);
+		return (m_params.motionDetectionType); // DDEBUG TEST 
+		//return (m_params.motionDetectionType > 0 && m_motionOnly && (m_frameNum - m_lastFrameNum_motion) >= m_params.stepMotionFrames);
 	}
 
 	/*-------------------------------------------------------------------------
@@ -598,11 +595,41 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		if ((m_frameNum - m_lastFrameNum_detection) >= m_params.stepDetectionFrames) 
 			return true;
 
-		// Intraval cycle arrived:
-		//if (m_frameNum % m_params.stepDetectionFrames == 0)   return true;
-
 		// otherwise 
 		return   false;
 	}
 
 
+	/*--------------------------------------------------------------------------------------
+	* Save detection image with detection BOXes
+	* switch:
+	* m_params.debugTraceCamID -1 (default)		- dont save
+	* m_params.debugTraceCamID 1000				- Save all cameras
+	* m_params.debugTraceCamID range(0..999)	- save only this camera ID
+	*
+	 --------------------------------------------------------------------------------------*/
+	int CDetector::debugSaveDetectionsImages(std::vector <CObject>	detectedObjs, std::vector <int> camIDs)
+	{
+		//if (!camIDs.empty() && std::find(camIDs.begin(), camIDs.end(), m_cameraID) == camIDs.end())  return 0;
+		if (m_params.debugTraceCamID < 0)
+			return 0;
+
+		if (m_params.debugTraceCamID != 1000 && m_cameraID != m_params.debugTraceCamID)
+			return 0;
+
+		std::string fname = "c:\\tmp\\debug\\detection_" + std::to_string(m_cameraID) + "_" + std::to_string(m_frameNum) + ".png";
+		cv::Mat display = m_frame.clone();
+
+		for (auto obj : detectedObjs) 
+			cv::rectangle(display, obj.m_bbox, cv::Scalar(255, 0, 100), 3);
+
+		if (display.size().width > 800) {
+			float scale = 800. / (float)display.size().width;
+			cv::resize(display, display, cv::Size(0, 0), scale, scale);
+		}
+
+		cv::imwrite(fname, display);
+		
+		return detectedObjs.size();
+
+	}

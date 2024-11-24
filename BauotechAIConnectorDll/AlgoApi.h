@@ -37,7 +37,7 @@ typedef struct ALGO_DETECTION_OBJECT_DATA
 typedef void (*CameraRequestCallback)(const uint32_t camera[] , int size);
 // CameraRequestCallback gCameraRequestCallback = nullptr;
 
-typedef void (__cdecl *CameraAICallback)(uint32_t videoIndex, ALGO_DETECTION_OBJECT_DATA* pObjects, uint32_t objectCount, uint8_t* pData, int size);
+typedef void (__cdecl *CameraAICallback)(uint32_t videoIndex, ALGO_DETECTION_OBJECT_DATA* pObjects, uint32_t objectCount, uint8_t* pData, int size, int64_t timeStamp);
 
 
 typedef enum BAUOTECH_AND_BENNY_KAROV_ALGO
@@ -93,7 +93,7 @@ extern "C" {
 													int MaxAllowed,
 													int Polygon[],
 													int polygonSize,
-													int motionType=0);
+													int motionType = _MotionType::_OnlyMoving);
 
 
 
@@ -112,13 +112,13 @@ extern "C" {
 		uint8_t invertImage,
 		CameraAICallback callback);
 
-	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber);
+	API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber, int64_t timestamp);
 	API_EXPORT int BauotechAlgoConnector_Run3_sync(uint32_t videoIndex, uint8_t* pData, ALGO_DETECTION_OBJECT_DATA* AIObjects, uint64_t frameNumber);
 
 	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
 
 
-	API_EXPORT void BauotechAlgoConnector_Init();
+	API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer);
 	API_EXPORT void BauotechAlgoConnector_Release();
 	API_EXPORT void BauotechAlgoConnector_Remove(int videoindex);
 

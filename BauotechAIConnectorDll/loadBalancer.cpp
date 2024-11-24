@@ -14,6 +14,8 @@
 
 #include "opencv2/opencv.hpp"
 
+#include "config.hpp"
+
 #include "AlgoApi.h" // for MAX_VIDEO const
 #include "logger.hpp"
 #include "loadBalancer.hpp"
@@ -26,27 +28,41 @@
 #include <boost/random/uniform_int_distribution.hpp>
 
 using namespace std::chrono_literals;
+/*---------------------------------------------------------------------------------------------
+* Queues description
+* 1. m_priorityQueue -  priority queue of cameras
+* 2. m_cameraBatchList - list of cameras to be processed in the next batch
+*
+* 3. g_resQueue - Temp queue of processed frames. stores in  'm_cameraBatchListDone; 
+* 4. m_cameraBatchListDone - list of cameras that were processed in the current batch
+* 5. m_cameraBatchListAquired - list of cameras that were aquired in the current batch
+* 6. m_logBatchQueue - list of cameras that were processed in the current batch (for logging)
 
+* 7. m_resourceBouncer - semaphore for resource management
+---------------------------------------------------------------------------------------------*/
 //---------------------------------------------------------------------------------
 // Singletone YOLO initialization:
 std::map<int, std::shared_ptr<ST_yoloDetectors>> ST_yoloDetectors::instances;
-std::mutex ST_yoloDetectors::st_mtx;
+
 ThreadSafeVector <int> ST_yoloDetectors::freeDetectors;
+ThreadSafeVector <int>  m_cameraBatchListDone;
+
+std::mutex ST_yoloDetectors::st_mtx;
 int ST_yoloDetectors::m_maxDetectors = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
 //---------------------------------------------------------------------------------
 
-std::mutex qeue_mutex;
-std::mutex bacthlist_MTX;
+//std::mutex qeue_mutex;
+std::shared_mutex bacthlist_MTX;
+std::shared_mutex API_MTX;
 std::stringstream  g_logMsg;
 
-
-
-
 // sync results
-static std::queue<CCycle>         g_resQueue;
-static std::mutex              g_resQMtx;
-static std::condition_variable g_resCondV;
-static std::mutex              g_resCondVMtx;
+
+std::condition_variable g_resCondV;
+std::mutex              g_resCondVMtx;
+
+std::queue<CCycle>      g_resQueue;
+std::shared_mutex       g_resQMtx;
 
 
 CDashboard m_dashboard;
@@ -79,7 +95,8 @@ void CLoadBalaner::cameraCounter(int cams)
 //--------------------------------------------------------
 void CLoadBalaner::priorityTH()
 {
-	//CTimer timer;
+	CTimer timer;
+
 
 	int batchCounter = 0; // for print statistics 
 	m_cycleCounter = 0;
@@ -90,11 +107,10 @@ void CLoadBalaner::priorityTH()
 	StatisticsInfo statisticsRes;
 	statisticsRes.clear();
 
-
-	CTimer timer_while;
+	timer.start();
 
 	while (m_priorityQueue.empty())
-		std::cout << "wait for camera to fillup \n";
+		Sleep(4); //  std::cout << "wait for camera to fillup \n"; // DDEBUG PRINT 
 
 	prepareNextBatch();// kickoff balancer list
 
@@ -104,11 +120,27 @@ void CLoadBalaner::priorityTH()
 		if (!priorityUpdateTop())
 			continue;
 
+
+#if 0
+		{
+			timer.start();
+			Sleep(10);
+			float elapsedMS = timer.sampleFromStart();
+			int debug = 10;
+
+		}
+#endif 
 		// Batch handling: Count 'm_resourceNum' cameras inputs , beat() queue and than cacl next batch  list 
 		//------------------------------------------------------------------------------------------------------
-		//processCounter++; 
-		//if (processCounter >= m_resourceNum) { // == timeToUpdateBatchList()
-		if (m_cameraBatchListDone.size()  >= m_resourceNum) { // == timeToUpdateBatchList()
+		bool timeOut = false;
+		/*
+		float elapsedMS = timer.sampleFromStart();
+		if (elapsedMS  > CONSTANTS::MAX_BATCH_PERIOD)
+			std::cout << "t=" << (float)elapsedMS/1000000.;// timeOut = true;
+		// short version: timeOut = (timer.sample() > CONSTANTS::MAX_BATCH_PERIOD);
+		*/
+
+		if (m_cameraBatchListDone.size() >= m_resourceNum || timeOut) { // == timeToUpdateBatchList()
 			m_cycleCounter++;
 			batchCounter++;
 			prepareNextBatch();
@@ -117,8 +149,10 @@ void CLoadBalaner::priorityTH()
 			// Dashbaord 
 			m_dashboard.update(m_priorityQueue.getCamList(), statisticsRes, m_actualTopPriority);
 			m_dashboard.show();
+			timer.start();
+			//std::cout << ">> start a new batch \n";
+			
 		}
-
 
 
 		if (m_printStatistics && batchCounter > statisticsModulo) { 
@@ -146,11 +180,14 @@ void CLoadBalaner::priorityTH()
 void CLoadBalaner::ResQueuePush(CCycle info)
 {
 
-	LOGGER::log(DLEVEL::INFO2, std::string(std::string(" 'reQueue' get processed frame : " + std::to_string(info.camID))));
+	//LOGGER::log(DLEVEL::DEBUG_HIGH, std::string(std::string(" 'reQueue' get processed frame : " + std::to_string(info.camID))));
 
-	const std::lock_guard<std::mutex> lock(g_resQMtx);
+	const std::lock_guard<std::shared_mutex> lock(g_resQMtx);
 
-	g_resQueue.push(info);
+	g_resQueue.push(info); // unhandled cam
+
+	m_cameraBatchListDone.push_back(info.camID); // Done cam list 
+
 	
 }
 
@@ -160,53 +197,32 @@ void CLoadBalaner::ResQueueNotify()
 	g_resCondV.notify_one();
 }
 
-// Set priority to top cam in queue
+// Set priority to TOP cam in resQueue (res from detecor thread)
 bool CLoadBalaner::priorityUpdateTop()
 {
-	auto dataTimeOut = 40ms; // DDEBUG CONST 
 
-#if 1
-	// Get data from resQueue:
-	{
-		while (g_resQueue.empty()) {
-			//LOGGER::log(DLEVEL::WARNING2, std::string("Waiting 10ms for data from detector (resQueu is empty"));
-			Sleep(5);
-			// missing TIMEOUT + return FALSE !!!!
-		}
+	// Get cam detectror info (g_resQueue) from algoDetection thread(s) 
+	while (g_resQueue.empty()) {
+		Sleep(5);
 	}
-#else
-	//  Naive waiting to res in queue
-	{
-		while (g_resQueue.empty()) {
-			//LOGGER::log(DLEVEL::WARNING2, std::string("Waiting 10ms for data from detector (resQueu is empty"));
-			Sleep(5);
-		}
-	}
-#endif 
+	//s_lock.unlock();
 
-	// Read top resQueue element from queue (thread protected):
-	static CCycle info;
+
+	// Store g_resQueue top int m_cameraBatchListDone vec:
+	CCycle info;
 	{
-		std::lock_guard<std::mutex> lock(g_resQMtx);
+		std::unique_lock<std::shared_mutex> lock(g_resQMtx);
 
 		info = g_resQueue.front();
 		g_resQueue.pop();  // release top queue element
-
-		if (g_resQueue.size() > 1)  // DDEBUG PRINT
-			std::cout << "g_resQueue size > 1 : (" << g_resQueue.size() << ")\n";
-
-		/*
-		auto camID = std::find(m_cameraBatchList.begin(), m_cameraBatchList.end(), info.camID);
-		if (camID == m_cameraBatchList.end())   std::cout << "Unmatched camera pushed to resQueue";
-		*/
-		m_cameraBatchListDone.push_back(info.camID);
+		lock.unlock();
 
 	}
 
 	m_resourceBouncer.release();
 
 
-	LOGGER::log(DLEVEL::WARNING2, std::string("LB: update priority  for camera = " + std::to_string(info.camID)));
+	LOGGER::log(DLEVEL::INFO2, std::string("LB: update priority  for camera = " + std::to_string(info.camID)));
 
 
 	info.activeCamera = m_camType[info.camID] == CAMERA_TYPE::Active ? 1 : 0;
@@ -232,6 +248,12 @@ bool CLoadBalaner::priorityUpdateTop()
 void CLoadBalaner::prepareNextBatch()
 {
 	static int printQueueCounter = 0;
+
+	{
+		std::lock_guard<std::shared_mutex> batchlist_loc(bacthlist_MTX);
+		m_cameraBatchList.clear();
+	}
+
 	// first increase un-handled cams prior:
 	m_priorityQueue.beat(m_beatStep);
 
@@ -241,43 +263,42 @@ void CLoadBalaner::prepareNextBatch()
 	// get next top priority cameras:			
 	auto topQueue = m_priorityQueue.getTop(m_resourceNum);
 
+	std::unique_lock<std::shared_mutex> batchlist_loc(bacthlist_MTX); 
 
-	{
-		std::lock_guard<std::mutex> batchlist_loc(bacthlist_MTX);
-
-		m_cameraBatchList.clear();
-		//retrieve only the cams list 
-		std::transform(std::cbegin(topQueue), std::cend(topQueue),
-			std::back_inserter(m_cameraBatchList), [](const auto& data) { return data.key; });
-
-	}
-
-	if (1) {// DDEBUG CHECK 
-		const auto duplicate = std::adjacent_find(m_cameraBatchList.begin(), m_cameraBatchList.end());
-
-		if (duplicate != m_cameraBatchList.end())
-			LOGGER::log(DLEVEL::DEBUG_HIGH, std::string("Duplicate element = " + std::to_string(*duplicate)));
-	}
+	// Copy topQueue to m_cameraBatchList
+	std::transform(std::cbegin(topQueue), std::cend(topQueue),
+		std::back_inserter(m_cameraBatchList), [](const auto& data) { return data.key; });
 
 
 	// Send batch info to server (via Callback):
 	if (m_bachCallback != nullptr) {
 		uint32_t cameras[100];
-		std::copy(m_cameraBatchList.begin(), m_cameraBatchList.end(), cameras);
-		m_bachCallback(cameras, (int)m_cameraBatchList.size());
 
-		updatePriorThresholds(); //  update topPriority, m_2thirdPriority etc.
+		//std::copy(m_cameraBatchList.begin(), m_cameraBatchList.end(), cameras);
+		for (int i = 0; i < m_cameraBatchList.size(); i++)
+			cameras[i] = (uint32_t)m_cameraBatchList[i];
+
+		m_bachCallback(cameras, (int)m_cameraBatchList.size());
+		batchlist_loc.unlock();
+		//updatePriorThresholds(); //  update topPriority, m_2thirdPriority etc.
 
 	}
+	
+	updatePriorThresholds(); //  update topPriority, m_2thirdPriority etc.
 
 
 
 	// DDEBUG - print QUEUE info 
+	//-----------------------------
 	int skip = 1; // DDEBUG 
 	if (++printQueueCounter % skip == 0) {
 		printQueueInfo();
 		printQueueCounter = 0;
 	}
+
+	// Clean only after calling printQueueInfo() - it uses these vector  
+	m_cameraBatchListDone.clear();
+
 
 }
 
@@ -286,11 +307,12 @@ void CLoadBalaner::prepareNextBatch()
 * Init resource size (batchNum)
 * init() return the debugLevel (for algoAPI)
 -------------------------------------------------------------------*/
-int CLoadBalaner::init(LB_SCHEME scheme)
+int CLoadBalaner::init(uint32_t *batchSize)
 {
+	std::lock_guard<std::shared_mutex> lock(API_MTX);
+
 	m_active = true;
 
-	m_scheme = scheme;
 
 	// setup resourceNum
 	m_resourcesRange.push_back(CResourceRange(0, 10, -1));
@@ -301,10 +323,19 @@ int CLoadBalaner::init(LB_SCHEME scheme)
 	Config params;
 	params.GPUBatchSize = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
 	FILE_UTILS::readConfigFile(params);
-	//tuneQueueParams(m_camerasNum);
-
-
 	m_debugLevel = params.debugLevel_LB;
+	if (isValidSchemeNum(params.LB_scheme))
+		m_scheme = LB_SCHEME(params.LB_scheme);
+	else {
+		LOGGER::log(DLEVEL::ERROR2, " Unknownn Load balancer Scheme " + std::to_string(m_scheme) + ", use V0 (default)");
+		m_scheme = LB_SCHEME::V0;
+	}
+
+	*batchSize = params.GPUBatchSize;
+	*batchSize = (uint32_t)params.GPUBatchSize;
+
+
+	LOGGER::log(DLEVEL::DEBUG_HIGH, " Load balancer Scheme = " + std::to_string(m_scheme));
 
 
 	m_maxResourceNum = m_resourceNum = ST_yoloDetectors::m_maxDetectors =  params.GPUBatchSize; // Calc number of threads can run on this PC simultaneously  
@@ -321,12 +352,15 @@ int CLoadBalaner::init(LB_SCHEME scheme)
 	if (DRAW_DASHBOARD)
 		m_dashboard.init(params.GPUBatchSize, m_resourceNum);
 
-	// Create & init yolo "floating" detectors 
-	int resourceNum = params.GPUBatchSize; // DDEBUG DDEBUG CONST reouceNum
-	for (int i = 0; i < resourceNum; i++) {
-		auto yolo2 = ST_yoloDetectors::getInstance(i);
-		if (yolo2 == nullptr || !yolo2->init(params.modelFolder, true))
-			std::cout << "Cant init YOLO net , quit \n";
+
+	if (YOLO_MNGR) {
+		// Create & init yolo "floating" detectors 
+		int resourceNum = params.GPUBatchSize;
+		for (int i = 0; i < resourceNum; i++) {
+			auto yolo2 = ST_yoloDetectors::getInstance(i);
+			if (yolo2 == nullptr || !yolo2->init(params.modelFolder, true))
+				std::cout << "Cant init YOLO net , quit \n";
+		}
 	}
 
 	return m_debugLevel;
@@ -720,7 +754,8 @@ int CLoadBalaner::calcPriority(int motion, int detections, int alerts, int activ
 		priority = calcPriority_V302(motion, detections, alerts, activeCamera);
 		break;
 	default:
-		LOGGER::log(DLEVEL::INFO2, " Load balancer got a Wrong Scheme " + std::to_string(m_scheme));
+		LOGGER::log(DLEVEL::ERROR2, " Unknownn Load balancer Scheme " + std::to_string(m_scheme) + ", use V0 (default)");
+		priority = calcPriority_V0(motion, detections, alerts, activeCamera);
 	}
 
 	return priority;
@@ -813,31 +848,36 @@ void CLoadBalaner::updatePriorThresholds()
 {
 	m_actualTopPriority = m_priorityQueue.top().priority;
 	m_actualTopPriority = max(m_actualTopPriority, 1); /// min top = 1
-
-	/*
-	auto sortedHeap = m_priorityQueue.status(); // not neccessary with new queu
-	m_2thirdPriority = sortedHeap[int((float)sortedHeap.size() * 0.33)].priority; // 0 ind is highest prior
-	m_thirdPriority = sortedHeap[int((float)sortedHeap.size() * 0.67)].priority;
-	*/
 }
 
 
 
-void CLoadBalaner::initCamera(int videoIndex)
+void CLoadBalaner::initCamera(int camID)
 {
 	if (!m_active)
 		return;
 
-	m_priorityQueue.add(videoIndex);
+	std::lock_guard<std::shared_mutex> lock(API_MTX);
+
+	m_priorityQueue.add(camID);
 	// update m_resourceNum with new cam if possible 
 	m_resourceNum = MIN(m_maxResourceNum, (int)m_priorityQueue.size());
 
+	prepareNextBatch(); // kickoff balancer list (otherwise causes desklock with duplication check in Aqcuire())
 
+}
+
+void CLoadBalaner::SetCameraRequestCallback(CameraRequestCallback callback)
+{
+	std::lock_guard<std::shared_mutex> lock(API_MTX);
+	m_bachCallback = callback;
 }
 
 
 void CLoadBalaner::SetCameraType(int camID, int type)
 {
+	std::lock_guard<std::shared_mutex> lock(API_MTX);
+
 	if (camID >= m_camType.size())
 		std::cerr << "SetCameraType got illegal camera ID \n";
 	else
@@ -857,41 +897,55 @@ Check camera status (location in queue) and Resources status
  'allowOverflow' flag - run camera and push to queue even if no resource or not in top of queue 
  return if OVERFLOW was accured 
 ----------------------------------------------------------------------*/
-AQUIRE_ERROR CLoadBalaner::acquire(int camID, bool processNotInList)
+AQUIRE_ERROR CLoadBalaner::acquire(int camID)
 {
 	if (!m_active)
 		return AQUIRE_ERROR::NOT_ACTIVE;
 
-	// Check that there ius a YOLO resource 
-	if (YOLO_MNGR) {
-		if (ST_yoloDetectors::getFreeInstenceInd() < 0)
-			return AQUIRE_ERROR::RESOURCE_OVERFLOW;
-	}
+	const bool haltLoadBalancer = false; // disable oad balancer aqcuire limitation 
+	bool checkInList = true;
+	bool checkDuplicated = true;
 
-	AQUIRE_ERROR error = AQUIRE_ERROR::OK;
+	if (haltLoadBalancer)
+		checkInList = checkDuplicated = false;
 
-	// Camera first frame: Put in high prior
-	//if (std::find(m_camInQueue.begin(), m_camInQueue.end(), camID) == m_camInQueue.end()) { 		//m_camInQueue.push_back(camID);
+	AQUIRE_ERROR ret;
+	std::shared_lock<std::shared_mutex> s_loc(bacthlist_MTX);
+
+	if (checkInList && std::find(m_cameraBatchList.begin(), m_cameraBatchList.end(), camID) == m_cameraBatchList.end())
+		ret = AQUIRE_ERROR::NOT_IN_LIST;
+	else if (checkDuplicated && m_cameraBatchListDone.findVal(camID))
+		ret = AQUIRE_ERROR::DUPLICATE_AQUIRED;
+	else 
+		ret = AQUIRE_ERROR::OK;
 	
-	// Set priority to a NEW camera
-	if (m_priorityQueue.getPriority(camID) < 0) { // camera new - not in queue
-		m_priorityQueue.set(camID, m_actualTopPriority);
-	}
-	else //Check 1: in top priority list 
-		if (!m_priorityQueue.inTop(camID, m_resourceNum)) {
-			LOGGER::log(DLEVEL::INFO2, "LB ignore cam = " + std::to_string(camID) + " (not in top)");
-			//LOGGER::log(DLEVEL::INFO1, "LB ignore cam = " + std::to_string(camID) + " (not in top)");
-			error = AQUIRE_ERROR::NOT_IN_TOP;
+
+	// DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG PRINT ---------------------------------------------
+	if (1)
+	{
+		if (ret == AQUIRE_ERROR::NOT_IN_LIST)
+		{
+			std::string errorStr = "LB ignore cam = " + std::to_string(camID) + "(list:";
+			for (auto cam : m_cameraBatchList)
+				errorStr.append(std::to_string(cam) + ",");
+			errorStr.append(")");
+
+			LOGGER::log(DLEVEL::DEBUG_HIGH, errorStr);
 		}
+		else if (ret == AQUIRE_ERROR::DUPLICATE_AQUIRED)
+		{
+			std::string errorStr = "LB ignore cam = " + std::to_string(camID) + "-DUPLPICATED";
+			LOGGER::log(DLEVEL::DEBUG_HIGH, errorStr);
+		}
+	}
+	//-----------------------------------------------------------------------------------------------
 
-	return error;
-
+	return ret;
 }
-
 
 void CLoadBalaner::remove(int camID)
 {
-	//m_camInQueue.erase(std::remove(m_camInQueue.begin(), m_camInQueue.end(), camID), m_camInQueue.end());
+	std::lock_guard<std::shared_mutex> lock(API_MTX);
 	m_priorityQueue.remove(camID); 
 }
 
@@ -916,13 +970,6 @@ void CLoadBalaner::tuneQueueParams( int cameraNum)
 }
 
 
-bool CLoadBalaner::isCamInBatchList(int camID)
-{
-	const std::lock_guard<std::mutex> batchlist_loc(bacthlist_MTX);
-
-	return (std::find(m_cameraBatchList.begin(), m_cameraBatchList.end(), camID) != m_cameraBatchList.end());
-}
-
 
 /*-----------------------------------------------------------------
 * Print queue information to LOG
@@ -941,23 +988,23 @@ void CLoadBalaner::printQueueInfo()
 	}
 
 
-	cur_LOG_LEVEL = DLEVEL::DEBUG_HIGH;
+	cur_LOG_LEVEL = DLEVEL::INFO1;
 	if (LOGGER::getDevLevel() >= cur_LOG_LEVEL) {  // optimize access to priorityQueue
 
 		// DDEBUG print processed cameras -------------------------------------------
-		std::string batchDoneStr = "LB camera list DONE (prev cycle): ( ";
-		for (auto cam : m_cameraBatchListDone) {
-			batchDoneStr.append(std::to_string(cam));
-			batchDoneStr.append(",");
+		std::string batchDoneStr = "LB camera list DONE (prev cycle): <( ";
+		{
+			for (int i = 0; i < m_cameraBatchListDone.size(); i++) {
+				batchDoneStr.append(std::to_string(m_cameraBatchListDone.get(i)));
+				batchDoneStr.append(",");
+			}
 		}
+
 		batchDoneStr.append(" )");
 		LOGGER::log(cur_LOG_LEVEL, batchDoneStr);
-
-		m_cameraBatchListDone.clear();
-
 		//---------------------------------------------------------------------------
 
-		std::string batchListStr = "LB camera list request: ( ";
+		std::string batchListStr = "LB camera list request:           >( ";
 		for (auto cam : m_cameraBatchList) {
 			batchListStr.append(std::to_string(cam));
 			batchListStr.append(",");
@@ -968,13 +1015,14 @@ void CLoadBalaner::printQueueInfo()
 }
 
 #if 0
-bool CLoadBalaner::releaseDebug(int camID)
+bool CLoadBalaner::isCamInBatchList(int camID)
 {
-	m_resourceBouncer.release();
-	m_priorityQueue.reset(camID); // reset prior 
-	return true;
+	const std::lock_guard<std::mutex> batchlist_loc(bacthlist_MTX);
+
+	return (std::find(m_cameraBatchList.begin(), m_cameraBatchList.end(), camID) != m_cameraBatchList.end());
 }
-#endif  
+#endif 
+
 
 
 

@@ -38,7 +38,6 @@ enum Labels
 	bird,
 	cat,
 	dog,
-	remote = 67, // DDEBUG 
 	unknown = 9999
 };
 
@@ -51,6 +50,13 @@ enum DETECT_TYPE {
 	Hidden,   // prediction on blind 
 	Prediction 
 	};
+
+enum MOTION_TYPE {
+	N_A,
+	Static,
+	Moving,
+	StaticAfterMotion
+};
 
 
 class CObject {
@@ -75,6 +81,10 @@ public:
 		return m_label != m_finalLabel;
 	}
 
+	inline bool isMoving() {
+		return m_moving > 0;
+	}
+
 	cv::Point center() {
 		return cv::Point(m_bbox.x + int((float)m_bbox.width / 2.), m_bbox.y + int((float)m_bbox.height / 2.));
 	}
@@ -87,7 +97,8 @@ public:
 	cv::Rect		m_bbox; // DDEBUG for debug
 	DETECT_TYPE		m_detectionType;
 	int				m_frameNum;
-	int				m_moving; // pixel distance
+	int				m_moving=0; // pixel distance
+	MOTION_TYPE		m_motionType; // previously moved, number of time was moved
 	int				m_age = 0;
 	float			m_confidence = 0;
 

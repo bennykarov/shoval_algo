@@ -15,25 +15,75 @@
 #include "concluder.hpp"
 
 
+#include <filesystem>
+
+using std::filesystem::current_path;
+
+
 
 using namespace CONCLUDER_CONSTANTS;
 
-void CDecipher::init(cv::Size imgDim, int debugLevel) { m_imgDim  = imgDim;  m_debugLevel = debugLevel; 	m_active = true; }
+void CDecipher::init(int camID, cv::Size imgDim, int debugLevel) { 
+	m_camID = camID;
+	m_imgDim  = imgDim;  
+	m_debugLevel = debugLevel; 	
+	m_active = true; 
+
+	m_predictor.init();
+
+	readFalseList();
+}
 
 /*--------------------------------------------------------------------------
 // UTILITIES :
 --------------------------------------------------------------------------*/
 
-float GET_MIN_YOLO_CONFIDENCE(Labels label, bool  MovingObj)
-{	
+/*
+----------------------------------------------------------
+Dynamic threshold for YOLO confidence 
+Diff between person-other , motion-static objects:
+----------------------------------------------------------
+*/
+float GET_MIN_YOLO_CONFIDENCE(Labels label, bool  isMoving)
+{
 	float conf = 0;
 	switch (label)
 	{
 	case Labels::person:
-		conf = MovingObj == 0 ? 0.5 : 0.2;
+		if (1)
+			conf = isMoving ? 0.2 : 0.4;
+		else
+			conf = isMoving ? 0.2 : 0.5;
 		break;
 	default:
-		conf = MovingObj == 0 ? 0.5 : 0.4;
+		conf = isMoving ? 0.4 : 0.5;
+	}
+
+	return conf;
+}
+
+/*----------------------------------------------------
+* Set yolo min conf according to:
+* label - person required LOWER  conf
+* isMoving - moving objects required  LOWER conf
+* Size - large objects required HIGHER conf
+ ----------------------------------------------------*/
+float GET_MIN_YOLO_CONFIDENCE(CObject obj)
+{
+	const int smallDim = 50;
+	float conf = 0;
+	bool isMoving = obj.isMoving();
+
+	switch (obj.m_label)
+	{
+	case Labels::person:
+		if (obj.m_bbox.width < smallDim  && obj.m_bbox.width < smallDim)
+			conf = isMoving ? 0.2 : 0.4;
+		else
+			conf = isMoving ? 0.4 : 0.5;
+		break;
+	default:
+		conf = isMoving ? 0.4 : 0.5;
 	}
 
 	return conf;
@@ -113,6 +163,89 @@ std::vector <int> CDecipher::removeDuplicated(std::vector <cv::Rect>& trackerOut
 	return duplicateInds;
 }
 
+int  CDecipher::addTrackerObjects(std::vector <CObject> trackerObjects, std::vector <YDetection> YoloOutput, int frameNum, bool prevWasYolo)
+{
+	std::vector <int> matchInds;
+	std::vector <int> duplicateInds; // tracking and YOLO duplications 
+
+	// (Tracker-A) First ignore tracker boxes  that overlapped with yolo (preferred YOLO)
+	//------------------------------------------------------------------------------------------
+	if (YoloOutput.size() > 0 && trackerObjects.size() > 0) {
+		std::vector <cv::Rect> trackerOutput;
+
+		for (auto obj : trackerObjects)
+			trackerOutput.push_back(obj.m_bbox);
+
+		//if (YoloOutput.size() > 0 && trackerOutput.size() > 0) 
+		{
+			duplicateInds = removeDuplicated(trackerOutput, YoloOutput);
+			// remove duplicated :
+			std::sort(duplicateInds.begin(), duplicateInds.end(), greater<int>());
+			for (auto ind : duplicateInds)
+				trackerObjects.erase(trackerObjects.begin() + ind);
+		}
+	}
+
+	// (Tracker-B) Add tracker boxes  
+	//-------------------------------
+	matchInds.clear();
+
+	for (auto obj : trackerObjects) {
+		CObject newObj = obj;
+
+		//int ind = bestMatch(obj.m_bbox, matchInds); // 'frameNum' -> ignore objects currently detected  by YOLO 
+		int ind = bestMatch(obj, matchInds); // 'frameNum' -> ignore objects currently detected  by YOLO 
+		if (ind >= 0 && m_objects[ind].back().m_frameNum < frameNum) {
+			bool mergeBox = false;
+			if (mergeBox)
+			{
+				// Merge bbox size - using YOLO last detection
+				// Find last yolo box 
+				auto it = find_if(m_objects[ind].rbegin(), m_objects[ind].rend(), [](CObject  obj) { return obj.m_detectionType == DETECT_TYPE::ML; });
+				cv::Rect yoloBox = it->m_bbox;
+
+				// Smoothing bboex over frames 
+				// - give 0.8 of the YOLO size, than alphaBlend with prev one.
+				float AlphaBland = 0.8;
+				// -1- set 80% of the size from Yolo:
+				cv::Rect yoloMergedBox = UTILS::mergeBBoxSize(obj.m_bbox, yoloBox, AlphaBland);
+				// -2- Merge (0.5/0.5) with prev detected box:
+				newObj.m_bbox = UTILS::mergeBBoxes(yoloMergedBox, m_objects[ind].back().m_bbox, 0.5);
+			}
+
+			newObj.m_ID = m_objects[ind].back().m_ID;
+
+			m_objects[ind].push_back(newObj);
+			matchInds.push_back(ind);
+		}
+	}
+
+
+	// Check that all yolo detections was tracked. 
+	// If not add the untracked it to track list (setROI)
+	if (!trackerObjects.empty() && prevWasYolo) {
+		//checkUntrackedTrkObjects(); // fill the m_TrkToRenewIDs
+		for (int i = 0; i < m_objects.size(); i++)
+			if (m_objects[i].back().m_detectionType == DETECT_TYPE::ML) {  // Check only fresh YOLO objects 
+				int id = m_objects[i].back().m_ID;
+				auto it = find_if(trackerObjects.begin(), trackerObjects.end(), [id](CObject obj) { return obj.m_ID == id; });
+				if (it == trackerObjects.end()) // objet is missing in Tracker detections
+					m_TrkToRenewIDs.push_back(i);
+			}
+
+		prevWasYolo = false;
+	}
+
+
+	//return matchInds.size();
+	return duplicateInds.size();
+}
+
+/*------------------------------------------------------------------------------------------------------------------------------
+* Add new objects to the list of objects
+* If object can be assigned to a object in the existing list (using bestMatch()) - add it to existing object
+* If not - Add a new object to the list
+-------------------------------------------------------------------------------------------------------------------------------*/
 std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::vector <YDetection> YoloOutput, int frameNum)
 {
 	if (!m_active)
@@ -142,25 +275,15 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 
 		newObj.m_confidence = Yobj.confidence;
 
-#if 0
-		// Filter specilas cases: move to suspected
-		// Small object must have HIGHER Confidence 
-		const int Small_Box_Dim = 20;
-		if (Yobj.box.area() <= Small_Box_Dim * Small_Box_Dim && Yobj.confidence < YOLO_CONFIDENCE_THRESHOLD_SMALL_DIM)
-			continue;
-#endif 
-		//if (Yobj.box.width <= Small_Box_Dim && Yobj.box.height <= Small_Box_Dim)   int debug = 10;
-
-		float overLappedTreshold = 0.3; // DDEBUG CONST
-		int ind = bestMatch(Yobj.box, overLappedTreshold, matchInds);
-
+		int ind = bestMatch(newObj, matchInds);
 		if (ind >= 0) {
+			// Tracked object:
 			newObj.m_ID = m_objects[ind].back().m_ID;
 			m_objects[ind].push_back(newObj);
 			matchInds.push_back(ind);
 		}
 		else {
-			// New object
+			// A New object:
 			newObj.m_ID = m_UniqueID++;
 			m_objects.push_back(std::vector <CObject>());
 			m_objects.back().push_back(newObj);
@@ -170,76 +293,81 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 	//------------------------------------------------------------------------------------------
 	// Add Tracker objects 
 	//------------------------------------------------------------------------------------------
+	std::vector <int> duplicateInds; // tracking and YOLO duplications 
 
-	// (Tracker-A) First ignore tracker boxes  that overlapped with yolo (preferred YOLO)
-	//------------------------------------------------------------------------------------------
-	std::vector <int> duplicateInds;
-	if (YoloOutput.size() > 0 && trackerObjects.size() > 0) {
-		std::vector <cv::Rect> trackerOutput;
-		
-		for (auto obj : trackerObjects)
-			trackerOutput.push_back(obj.m_bbox);
+	if (trackerObjects.size() > 0)
+		addTrackerObjects(trackerObjects, YoloOutput, frameNum, prevWasYolo);
+#if 0
+	{
+		// (Tracker-A) First ignore tracker boxes  that overlapped with yolo (preferred YOLO)
+		//------------------------------------------------------------------------------------------
+		if (YoloOutput.size() > 0 && trackerObjects.size() > 0) {
+			std::vector <cv::Rect> trackerOutput;
 
-		//if (YoloOutput.size() > 0 && trackerOutput.size() > 0) 
-		{
-			duplicateInds = removeDuplicated(trackerOutput, YoloOutput);
-			// remove duplicated :
-			std::sort(duplicateInds.begin(), duplicateInds.end(), greater<int>());
-			for (auto ind : duplicateInds)
-				trackerObjects.erase(trackerObjects.begin() + ind);
-		}
-	}
+			for (auto obj : trackerObjects)
+				trackerOutput.push_back(obj.m_bbox);
 
-	// (Tracker-B) Add tracker boxes  
-	//-------------------------------
-	matchInds.clear();
-
-	for (auto obj : trackerObjects) {
-		CObject newObj = obj;
-
-		int ind = bestMatch(obj.m_bbox, 0.01, matchInds); // 'frameNum' -> ignore objects currently detected  by YOLO 
-		if (ind >= 0 && m_objects[ind].back().m_frameNum < frameNum) {
-			bool mergeBox = false;
-			if (mergeBox)
+			//if (YoloOutput.size() > 0 && trackerOutput.size() > 0) 
 			{
-				// Merge bbox size - using YOLO last detection
-				// Find last yolo box 
-				auto it = find_if(m_objects[ind].rbegin(), m_objects[ind].rend(), [](CObject  obj) { return obj.m_detectionType == DETECT_TYPE::ML; });
-				cv::Rect yoloBox = it->m_bbox;
-
-				// Smoothing bboex over frames 
-				// - give 0.8 of the YOLO size, than alphaBlend with prev one.
-				float AlphaBland = 0.8;
-				// -1- set 80% of the size from Yolo:
-				cv::Rect yoloMergedBox = UTILS::mergeBBoxSize(obj.m_bbox, yoloBox, AlphaBland);
-				// -2- Merge (0.5/0.5) with prev detected box:
-				newObj.m_bbox = UTILS::mergeBBoxes(yoloMergedBox, m_objects[ind].back().m_bbox, 0.5);
+				duplicateInds = removeDuplicated(trackerOutput, YoloOutput);
+				// remove duplicated :
+				std::sort(duplicateInds.begin(), duplicateInds.end(), greater<int>());
+				for (auto ind : duplicateInds)
+					trackerObjects.erase(trackerObjects.begin() + ind);
 			}
-
-			newObj.m_ID = m_objects[ind].back().m_ID;
-
-			m_objects[ind].push_back(newObj);
-			matchInds.push_back(ind);
 		}
-		
-	}
 
+		// (Tracker-B) Add tracker boxes  
+		//-------------------------------
+		matchInds.clear();
 
-	// Check that all yolo detections was tracked. 
-	// If not add the untracked it to track list (setROI)
-	if (!trackerObjects.empty() && prevWasYolo) {
-		//checkUntrackedTrkObjects(); // fill the m_TrkToRenewIDs
-		for (int i = 0; i < m_objects.size(); i++) 
-			if (m_objects[i].back().m_detectionType == DETECT_TYPE::ML) {  // Check only fresh YOLO objects 
-				int id = m_objects[i].back().m_ID;
-				auto it = find_if(trackerObjects.begin(), trackerObjects.end(), [id](CObject obj) { return obj.m_ID == id; });
-				if (it == trackerObjects.end()) // objet is missing in Tracker detections
-					m_TrkToRenewIDs.push_back(i);
+		for (auto obj : trackerObjects) {
+			CObject newObj = obj;
+
+			int ind = bestMatch(obj.m_bbox, matchInds); // 'frameNum' -> ignore objects currently detected  by YOLO 
+			if (ind >= 0 && m_objects[ind].back().m_frameNum < frameNum) {
+				bool mergeBox = false;
+				if (mergeBox)
+				{
+					// Merge bbox size - using YOLO last detection
+					// Find last yolo box 
+					auto it = find_if(m_objects[ind].rbegin(), m_objects[ind].rend(), [](CObject  obj) { return obj.m_detectionType == DETECT_TYPE::ML; });
+					cv::Rect yoloBox = it->m_bbox;
+
+					// Smoothing bboex over frames 
+					// - give 0.8 of the YOLO size, than alphaBlend with prev one.
+					float AlphaBland = 0.8;
+					// -1- set 80% of the size from Yolo:
+					cv::Rect yoloMergedBox = UTILS::mergeBBoxSize(obj.m_bbox, yoloBox, AlphaBland);
+					// -2- Merge (0.5/0.5) with prev detected box:
+					newObj.m_bbox = UTILS::mergeBBoxes(yoloMergedBox, m_objects[ind].back().m_bbox, 0.5);
+				}
+
+				newObj.m_ID = m_objects[ind].back().m_ID;
+
+				m_objects[ind].push_back(newObj);
+				matchInds.push_back(ind);
 			}
+		}
 
-		prevWasYolo = false;
+
+		// Check that all yolo detections was tracked. 
+		// If not add the untracked it to track list (setROI)
+		if (!trackerObjects.empty() && prevWasYolo) {
+			//checkUntrackedTrkObjects(); // fill the m_TrkToRenewIDs
+			for (int i = 0; i < m_objects.size(); i++)
+				if (m_objects[i].back().m_detectionType == DETECT_TYPE::ML) {  // Check only fresh YOLO objects 
+					int id = m_objects[i].back().m_ID;
+					auto it = find_if(trackerObjects.begin(), trackerObjects.end(), [id](CObject obj) { return obj.m_ID == id; });
+					if (it == trackerObjects.end()) // objet is missing in Tracker detections
+						m_TrkToRenewIDs.push_back(i);
+				}
+
+			prevWasYolo = false;
+		}
+		// 
 	}
-	// 
+#endif 
 
 	int rem = pruneObjects();
 
@@ -248,43 +376,95 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 }
 
 /*-------------------------------------------------------------------------------
- *	Match RECT to prev RECTs in 'm_objects' list 
+ *	Match RECT to prev RECTs in 'm_objects' list
  * Params:
- * ignoreInds - these indices was already matched in prev cycles, ignore 
+ * ignoreInds - these indices was already matched in prev cycles, ignore
  * frameNumToIgnore - Ignore object that detect in this frameNum (current frame)
  *--------------------------------------------------------------------------------*/
-int CDecipher::bestMatch(cv::Rect box, float OverlappedThrash, std::vector <int> ignoreInds, int frameNumToIgnore)
+int CDecipher::bestMatch(CObject srcObj, std::vector <int> ignoreInds, int frameNumToIgnore)
 {
 	std::vector <int>  bestInds;
 	std::vector <float>  bestScores;
 
+	//cv::Rect testArea = makeABox(cv::Point(650, 85), 100, 100);
+	cv::Rect targetBox = cv::Rect(708, 52, 53, 33);
+	cv::Rect testArea = enlargeBbox(targetBox, cv::Size(targetBox.width*2, targetBox.height * 2));
+	if (1) // DDEBUG DDEBUG 
+	{
+		float overlap = OverlappingRatio_subjective(srcObj.m_bbox, testArea);
+		if (overlap > 0.9)
+			int debug= 10; // most new box overlapped old box
+	}
+
+
+#if 0
+	std::vector <int> staticINDs, movingINDs, staticFirstINDs;
+
+	// Check first Statics matching 
 	for (int i = 0; i < m_objects.size(); i++) {
+		if (isStableStaticObj(m_objects[i].back()))
+			staticINDs.push_back(i);
+		else
+			movingINDs.push_back(i);
+	}
+
+	staticFirstINDs = staticINDs;
+	staticFirstINDs.insert(staticFirstINDs.end(), movingINDs.begin(), movingINDs.end());
+
+	// When match indices, give statics priority - avoid static obj match to a new moving list 
+	for (int i : staticFirstINDs) {
+#else
+	for (int i = 0; i < m_objects.size(); i++) {
+#endif 
+		auto obj = m_objects[i].back();
+
+		// Skip conditions:
+		if (obj.m_label != srcObj.m_label)
+			continue;
 		if (std::find(ignoreInds.begin(), ignoreInds.end(), i) != ignoreInds.end())
 			continue; // Ignore this object
-		if (m_objects[i].back().m_frameNum == frameNumToIgnore)
+		if (obj.m_frameNum == frameNumToIgnore)
 			continue;
 
+		// Diff params for Static and Moving objects:
+		bool Matching = false;
 
-		auto obj = m_objects[i].back();
-		{
-			float overlappingRatio = bboxesBounding(obj.m_bbox, box); // most new box overlapped old box
-			int maxDistance = MIN(100, MAX_MOTION_PER_FRAME * (m_frameNum - obj.m_frameNum));
+		float overlappedRatio;
+		bool stableStatic = isStableStaticObj(obj);
+
+
+		if (stableStatic) {
+			// Check match for STATIC object 
+			//overlappedRatio = bboxesBounding(obj.m_bbox, srcObj.m_bbox); // most new box area should overlappe old box
+			overlappedRatio = OverlappingRatio(obj.m_bbox, srcObj.m_bbox); // most new box area should overlappe old box			
+			Matching = (overlappedRatio > GOOD_STATIC_OVERLAPED_AREA);
+		}
+		else {
+			// Check match for MOVING object 
+			float OverlappedThrash = GOOD_MOVING_OVERLAPED_AREA;
+			int durationFactor = min(5, m_frameNum - obj.m_frameNum);
+			int maxDistance = singleStepSize(obj.m_bbox.width, stableStatic) * durationFactor; // (m_frameNum - obj.m_frameNum);
+
+
+			//m_predictor.predict(obj, m_frameNum);
+			/*
+			pos = estimatePosition(obj);
+			match = distance(boxCenter(obj.m_bbox), boxCenter(srcObj.m_bbox)) < maxDistance2
+
+			*/
+
+			overlappedRatio = OverlappingRatio(obj.m_bbox, srcObj.m_bbox); // most new box overlapped old box
 			// Check (1) overlapping ratio (2) The sizes are similars (kind of) (3) the distance is reasonable 
-			bool Matching;
-			// Different condition for moving and static objects:
-			// In case of static object - dont match after start moving - better treats as a new object 
-			// This done to avoid "jumping"  from one parking car to another 
+			Matching = (overlappedRatio > OverlappedThrash) || (similarBox(obj.m_bbox, srcObj.m_bbox, 0.6) && distance(boxCenter(obj.m_bbox), boxCenter(srcObj.m_bbox)) < maxDistance);
+		}
 
-			if (obj.m_moving > 0)
-				Matching = (overlappingRatio > OverlappedThrash) || (similarBox(obj.m_bbox, box, 0.6 * 0.6) && distance(obj.m_bbox, box) < maxDistance);
-			else // static object 
-				Matching = (overlappingRatio > 0.8 && distance(obj.m_bbox, box) < 10);
+		if (Matching) {
 
-			//if (overlappingRatio > OverlappedThrash ||  (similarBox(obj.m_bbox, box, 0.6 * 0.6) && distance(obj.m_bbox, box) < maxDistance))
-			if (Matching) {
-				bestInds.push_back(i);
-				bestScores.push_back(overlappingRatio);
-			}
+			if (obj.m_ID == 9)
+				int debug = 10;
+
+			bestInds.push_back(i);
+			bestScores.push_back(overlappedRatio);
 		}
 	}
 
@@ -294,24 +474,32 @@ int CDecipher::bestMatch(cv::Rect box, float OverlappedThrash, std::vector <int>
 	auto it = max_element(bestScores.begin(), bestScores.end());
 	int index = it - bestScores.begin();
 	return bestInds[index];
-}
-
+	}
 
 
 /*---------------------------------------------------------------
 	Update final (current) 'm_detectedObjects' from 'm_objects'
  ----------------------------------------------------------------*/
-int CDecipher::track(int mode)
+int CDecipher::track(int mode, std::vector <cv::Rect>  BGSEGoutput)
 {
 	m_detectedObjects.clear(); // TEMP clearing
 	m_pruneObjIDs.clear();
 
 	for (auto& obj : m_objects) {
 
+		// Set m_moving  : positive  for moving (num of moving frames), -X for X frames of static length 
+		int staticLen = isStatic(obj, BGSEGoutput);
+		if (staticLen == 0)
+			obj.back().m_moving = std::count_if(obj.begin(), obj.end(), [](CObject &ob) { return ob.m_moving > 0; });
+		else
+			obj.back().m_moving = -staticLen; // Keep static len as NAGTIVE
+
 		// Remove old object
-		if 	(getHiddenLen(obj.back()) > GET_KEEP_HIDDEN_FRAMES(obj.back().m_moving)) {
+		if (getHiddenLen(obj.back()) > GET_KEEP_HIDDEN_FRAMES(obj)) {
 			// remove object later
 			m_pruneObjIDs.push_back(obj.back().m_ID);
+			if (obj.back().m_ID == 12)
+				int debug = 10;
 		}
 		else {
 			// Add object 
@@ -319,17 +507,7 @@ int CDecipher::track(int mode)
 			m_detectedObjects.push_back(obj.back());
 			m_detectedObjects.back().m_confidence = stableConfidence(obj); // calc mean confidence of the last few frames 
 
-			// Set m_moving  : 1 for moving, -X for X frames of static length 
-			if (isStatic(obj) == 0)
-				obj.back().m_moving = 1;
-			else {
-				if (obj.size() > 1)
-					obj.back().m_moving = obj[obj.size() - 2].m_moving - 1; // increase (negative) count
-				else
-					obj.back().m_moving = -1;
-			}
-
-			m_detectedObjects.back().m_moving = obj.back().m_moving;
+			//m_detectedObjects.back().m_moving = obj.back().m_moving;
 		}
 	}
 
@@ -438,7 +616,7 @@ std::vector <CObject> CDecipher::getVehicleObjects(int frameNum, bool onlyMoving
 
 	if (onlyMoving)
 		std::copy_if(m_detectedObjects.begin(), m_detectedObjects.end(), std::back_inserter(vehicleObjects),
-			[](CObject obj) { return (obj.m_label == Labels::car || obj.m_label == Labels::truck || obj.m_label == Labels::bus) &&    obj.m_moving > 0; });
+			[](CObject obj) { return (obj.m_label == Labels::car || obj.m_label == Labels::truck || obj.m_label == Labels::bus) &&    obj.isMoving(); });
 	else
 		std::copy_if(m_detectedObjects.begin(), m_detectedObjects.end(), std::back_inserter(vehicleObjects),
 			[](CObject obj) { return obj.m_label == Labels::car || obj.m_label == Labels::truck || obj.m_label == Labels::bus; });
@@ -459,7 +637,7 @@ std::vector <CObject> CDecipher::getOtherObjects(int frameNum, bool onlyMoving)
 		
 		if (onlyMoving)
 			std::copy_if(m_detectedObjects.begin(), m_detectedObjects.end(), std::back_inserter(otherObjects),
-				[](CObject obj) { return obj.m_label != Labels::person && obj.m_label != Labels::nonLabled && obj.m_moving > 0; });
+				[](CObject obj) { return obj.m_label != Labels::person && obj.m_label != Labels::nonLabled && obj.isMoving(); });
 		else 
 			std::copy_if(m_detectedObjects.begin(), m_detectedObjects.end(), std::back_inserter(otherObjects),
 				[](CObject obj) { return obj.m_label != Labels::person && obj.m_label != Labels::nonLabled; });
@@ -506,19 +684,23 @@ float CDecipher::stableConfidence(std::vector <CObject> obj)
 	if (obj.size() < MIN_STABLE_DETECTION_FRAMES) 
 		return 0;
 
-	// Give more weight to an elders objects - provide the best confidence of last detections 
-	if (obj.size() > MIN_STABLE_DETECTION_FRAMES * 3) { // DDEBUG CONST 
-		auto it = std::max_element(obj.begin(),obj.end(), [](const CObject& a, const CObject& b) { return a.m_confidence < b.m_confidence; });
-		return it->m_confidence;
-	}
-
-
 	float confAvg = 0;
 	for (int i = obj.size() - MIN_STABLE_DETECTION_FRAMES; i < obj.size(); i++) {
 		confAvg += obj[i].m_confidence;
 	}
 
 	confAvg /= (float)MIN_STABLE_DETECTION_FRAMES;
+
+	// Give more weight to an elders objects - aerage the AVG with best confidence ever 
+	if (obj.size() > MIN_STABLE_DETECTION_FRAMES * 3) { // DDEBUG CONST 
+		auto it = std::max_element(obj.begin(), obj.end(), [](const CObject& a, const CObject& b) { return a.m_confidence < b.m_confidence; });
+		if (1)
+			confAvg = (confAvg + it->m_confidence) / 2.;
+		else
+			return it->m_confidence;
+	}
+
+
 	return confAvg;
 
 }
@@ -559,113 +741,54 @@ bool CDecipher::isMoving(std::vector <CObject> obj)
 	return false;
 }
 
-
-/*------------------------------------------------------------------------------------------
-* Check if object is static :
-* return the len (num of frames) of the static object - up to max 'INSPECTED_LEN' len
-* check :
-	(1) BBox overlapping
-	(2) Box position (center)
-	(3) Detection confidence 
- *------------------------------------------------------------------------------------------*/
-int CDecipher::isStatic(std::vector <CObject> obj)
+/*----------------------------------------------------------------------
+* Return : count of static frames ( 0 if moving)
+-----------------------------------------------------------------------*/
+int CDecipher::isStatic(std::vector <CObject> objs, std::vector <cv::Rect>  BGSEGoutput)
 {
-	int MinLen = 3;
-	int MinStatisticsPointsLen = 3;  // excluding outliers 
-	int INSPECTED_SECONDS = 2;
-	int INSPECTED_LEN = INSPECTED_SECONDS * CONSTANTS::FPS; // in frames
-	float MIN_OVERLAPPING_RATIO = 0.8;
-	float DIST_TO_BOX_RATIO = 1./20.; // Motion 'dist' proprional to obj dim (box)
 
-	
 
-	// Default is moving  here 
-	if (obj.size() < MinLen)
-		return 0;
+	int fps_ = 30;
+	int INSPECTED_LEN = 20; // fps_ * 2; // in frames
 
-	if (obj.back().m_ID == 10)
+	int staticCount= 0;
+
+
+	if (m_frameNum > 20 && objs.back().m_ID == 12)
 		int debug = 10;
 
-	// 'Structure' keeps indices, centers and areas of detection vecs
-	std::vector <int> indices;
-	std::vector <cv::Point2f> centers;
-	std::vector <float>  areas;
+	if (objs.size() < 8)
+		return 0;
 
-
-	int start = MAX(int(obj.size() - INSPECTED_LEN), 0);
-	//int end = obj.size();
-
-	for (int i = start; i <  obj.size(); i++) {
-		cv::Point center = (obj[i].m_bbox.br() + obj[i].m_bbox.tl()) * 0.5;
-		indices.push_back(i);
-		centers.push_back(center);
-		areas.push_back(obj[i].m_bbox.area());
+	// If BGSeg found motion within this object - not a static object
+	for (auto bbox : BGSEGoutput) {
+		if (OverlappingRatio(cv::Rect2f(objs.back().m_bbox), cv::Rect2f(bbox)) > 0)
+			return 0;
 	}
 
+	auto curObj= objs.back();
+	auto prevObj = objs[objs.size()-2];
 
-	// Find Median of centers 
-	//---------------------------
-	cv::Point2f massCenter;
+	int overlapCount = 0;
 
-	auto centersToSort = centers; // dont ruin the original indices 
-	std::sort(centersToSort.begin(), centersToSort.end(), [](const cv::Point2f p1, const cv::Point2f p2) -> bool { return p1.x < p2.x; });
-	massCenter.x = centersToSort[int(centersToSort.size() / 2)].x;
-	std::sort(centersToSort.begin(), centersToSort.end(), [](const cv::Point2f p1, const cv::Point2f p2) -> bool { return p1.y < p2.y; });
-	massCenter.y = centersToSort[int(centersToSort.size() / 2)].y;
+	int start = MAX(int(objs.size() - INSPECTED_LEN), 0);
+	int actualInspectLen = objs.size()- start;
 
-	// MIN_STATIC_DIST is the distance from the Median location,
-	// When obj.size > 10, we allowed large step 
-	// Mark outliers (ind = -1)
-	//-----------------------------------------------------------
-	int MIN_STATIC_DIST = int(float(obj.back().m_bbox.size().width) * DIST_TO_BOX_RATIO);
-	if (obj.size() > 10)
-		MIN_STATIC_DIST *= 2;
-	for (int i = 0; i < centers.size();i++) {
-		float debug = distance(massCenter, centers[i]);
-		if (distance(massCenter, centers[i]) > (float)MIN_STATIC_DIST)
-			indices[i] = -1;// mark as outlier
+	// Check current overlapped of all others boexs in list
+	for (int i = start; i < objs.size()-1; i++) {
+		//float overlapRatio = OverlappingRatio(cv::Rect2f(curObj.m_bbox), cv::Rect2f(objs[i].m_bbox));
+		float overlapRatio = OverlappingRatio(cv::Rect2f(curObj.m_bbox), cv::Rect2f(objs[i].m_bbox));
+		if (overlapRatio > GOOD_STATIC_OVERLAPED_AREA)
+			overlapCount++;
 	}
 
-	int staticCount = std::count_if(indices.begin(), indices.end(), [](int i) { return i >= 0; });
-	// Quit if too few static points 
-	if (staticCount < MinStatisticsPointsLen)
-		return 0;
-	//----------------------
-	// Check Areas diff
-	//----------------------
+	float framesOverlapRatio = (float)(overlapCount + 1.) / (float)(actualInspectLen);
+	if (framesOverlapRatio > 0.65)
+		staticCount = overlapCount + 1; // include the current object
+	else
+		staticCount = 0;
 
-	float areaMedian = findMedian(areas);
- 
-	for (int i = 0; i < indices.size(); i++) {
-		if (indices[i] >= 0)
-			if (UTILS::ratio(areaMedian, areas[i]) <  (float)MIN_OVERLAPPING_RATIO)
-				indices[i] = -1;// mark as bad
-	}
-
-
-	staticCount = std::count_if(indices.begin(), indices.end(), [](int i) { return i >= 0; });
-	// Quit if too few static points 
-	if (staticCount < MinStatisticsPointsLen)
-		return 0;
-
-	// -1- check majority of static points (3/4 at least)
-	if (staticCount < int((float)indices.size() * 0.75))
-		return 0;
-
-	auto it = std::find_if(indices.begin(), indices.end(), [](int i) { return 1 > -1;  });
-	int firstInd = std::distance(indices.begin(), it);
-	auto it2 = std::find_if(indices.rbegin(), indices.rend(), [](int i) { return 1 > -1;  });
-	int lastInd = std::distance(it2, indices.rend()-1);
-
-	// -2- check statics points spred nicely along the inspected area (period)
-	int dist = lastInd - firstInd;
-	if (dist < int((float)indices.size() / 2.))
-		return 0;
-	
-
-	// Retun number of "good" points (excluded outliers)
-	return 	staticCount;
-
+	return staticCount;
 }
 
 
@@ -702,6 +825,24 @@ int CDecipher::pruneObjects()
 }
 
 
+int CDecipher::pruneObjects(int objID)
+{
+	int orgSize = m_objects.size();
+
+	std::vector <int>   prunedInds; // object index (!m_ID)
+
+	// convert  ObjID to vector index:
+		auto it = find_if(m_objects.begin(), m_objects.end(), [objID](std::vector <CObject>  obj) { return obj.back().m_ID == objID; });
+		if (it != m_objects.end()) {
+			int ind = std::distance(m_objects.begin(), it);
+			m_objects.erase(m_objects.begin() + ind);
+			return 1;
+			//prunedInds.push_back(std::distance(m_objects.begin(), it));
+		}
+
+		return 0;
+}
+
 
 // return number of person on board (including hidden objects)
 int CDecipher::numberOfPersonsOnBoard()
@@ -724,8 +865,10 @@ std::vector <CObject> CDecipher::getStableObjects(float scale, cv::Mat *frameImg
 
 	// Scale back to origin dimensions is required
 	for (auto obj : m_detectedObjects) {
-		int MAX_HIDDEN_FRAME = obj.m_moving > 0 ? MAX_SIREN_HIDDEN_FRAMES : MAX_SIREN_HIDDEN_FRAMES * 10;
-		if (obj.m_confidence >= GET_MIN_YOLO_CONFIDENCE((Labels)obj.m_label, obj.m_moving) && getHiddenLen(obj) <= MAX_HIDDEN_FRAME) { // Allow only fresh detected objects
+
+		int maxHiddenFrame = obj.isMoving() ? MAX_MOVING_SIREN_HIDDEN_FRAMES : MAX_STATIC_SIREN_HIDDEN_FRAMES;
+
+		if (obj.m_confidence >= GET_MIN_YOLO_CONFIDENCE(obj) && getHiddenLen(obj) <= maxHiddenFrame) { // Allow only fresh detected objects
 			scaledDetectedObjects.push_back(obj);
 			scaledDetectedObjects.back().m_bbox = UTILS::scaleBBox(obj.m_bbox, scale);
 		}
@@ -738,18 +881,30 @@ std::vector <CObject> CDecipher::getStableObjects(float scale, cv::Mat *frameImg
 		for (auto obj : detectionSinglePloy) {
 			if (!suspectedAsFalse(obj, Labels(alert.m_label), frameImg))
 				detectedObjects.push_back(obj);
+			else {
+				pruneObjects(obj.m_ID);
+			}
 		}
 
 		if (detectedObjects.size() > alert.m_maxAllowed)
 			m_alertObjects.insert(m_alertObjects.end(), detectedObjects.begin(), detectedObjects.end()); // gather all camera's alerts into one vector
 	}
 
-
 	return detectedObjects;
 }
 
 
+std::vector <CObject> CDecipher::removeOverlappedObjects(std::vector <CObject> detectionSinglePloy)
+{
+	std::vector <CObject>  finalObjects;
 
+
+	return finalObjects;
+}
+
+/*------------------------------------------------------------------------------------------------
+* False Laram section:
+ ------------------------------------------------------------------------------------------------*/
 /*-----------------------------------------------------------------------------
 * Yolo has false alarams, guess if this is the case by:
 * (1) Box touch the frame edges
@@ -758,49 +913,57 @@ std::vector <CObject> CDecipher::getStableObjects(float scale, cv::Mat *frameImg
 -----------------------------------------------------------------------------*/
 bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameImg)
 {
-	if (alertLabel != Labels::person)
-		return false;
+	//if (alertLabel != Labels::person)  return false;
 
 	if (frameImg == nullptr)
 		return false;
 
-
-	// Small static object must have HIGHER Confidence 
-	const int Small_Box_Dim = 20;
-	if (obj.m_moving == 0 && obj.m_bbox.area() <= Small_Box_Dim * Small_Box_Dim && obj.m_confidence < YOLO_HIGH_CONFIDENCE)
+	if (isMatchFalseList(obj, *frameImg))
 		return true;
-
-
-	// Ignore too small object
-	if (1) { // DDEBUG DDEBUG REMOVED this for drone test
-		int maxDim = max(obj.m_bbox.width, obj.m_bbox.height);
-		if (maxDim < MIN_OBJECT_SIDE_SIZE)
-			return true;
-	}
 
 	// Dont check high score detection
 	if (obj.m_confidence > HIGH_YOLO_CONFIDENCE)
 		return false;
 
+	// Fail small objects (diff between width & height in Person detection
+	//---------------------------------------------------------------------
+	
+	// Dimension for non person objects
+	int Small_Box_H = 30;
+	int Small_Box_W = Small_Box_H;
+	// Dimension for person objects
+	if (obj.m_label == Labels::person) {
+		if (1) // DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG Allow small person objects
+			Small_Box_H = 10;
+		else
+			Small_Box_H = 21;
+
+			Small_Box_W = int((float)Small_Box_H / 3.);
+	}
+
+	// Remove small & young objects
+	if (obj.m_age < 5) 
+		if (obj.m_bbox.width < Small_Box_W || obj.m_bbox.height < Small_Box_H)
+			return true;
 
 	bool touchEdge = (obj.m_bbox.x == 0 || obj.m_bbox.y == 0 || obj.m_bbox.br().x == frameImg->size().width - 1 || obj.m_bbox.br().y == frameImg->size().height - 1);
 
 	// Ignore if  "touchEdge" and "lowCOntrast"
-	if (touchEdge) {
-		// box touch one of the the edge
+	//if (touchEdge) // DDEBUG REMOVE TEST 
+		{
+
 		float ratio = float(obj.m_bbox.width) / float(obj.m_bbox.height);
 		bool fatDimension = (ratio > MIN_BOX_RATION_FOR_PERSON && ratio < (1. / MIN_BOX_RATION_FOR_PERSON));  // person usually has a nerrow dimensions
 
-		if (fatDimension) {
+		//if (fatDimension) // DDEBUG REMOVE TEST 
+		{
 			double minVal;
 			double maxVal;
-			//cv::Point minLoc;
-			//cv::Point maxLoc;
 			int histSize = 256;
 			float range[] = { 0, 256 }; //the upper boundary is exclusive
 			const float* histRange[] = { range };
 			bool uniform = true, accumulate = false;
-			cv::Mat hist;
+
 
 			cv::Mat grayImg;
 			if (frameImg->channels() > 1)
@@ -812,7 +975,6 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 			cv::Scalar mean, stddev;
 			cv::Scalar mean_, stddev_;
 
-			//cv::meanStdDev(grayImg, mean_, stddev_);
 			cv::meanStdDev(grayImg(obj.m_bbox), mean, stddev);
 
 
@@ -828,6 +990,47 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 	return false;
 
 }
+
+
+bool isTemplateMatch(cv::Mat &img, cv::Mat templ, float thresh)
+{
+	cv::Mat result;
+	cv::matchTemplate(img, templ, result, cv::TM_CCOEFF_NORMED); // TM_SQDIFF
+	double minVal; double maxVal; cv::Point minLoc; cv::Point maxLoc;
+	cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, cv::Mat());
+
+	return maxVal > thresh;
+}
+
+/*--------------------------------------------------------------------------------
+	Check if object matchs one of the 'false' in list
+--------------------------------------------------------------------------------*/
+bool CDecipher::isMatchFalseList(CObject obj, cv::Mat& frameImg)
+{
+	float thres = 0.7;
+		
+
+	for (auto templ : m_falseTamplates) {
+		if (templ.m_label != obj.m_label)
+			continue;
+		//if (templ.m_camID != obj.m_ID)   continue;
+		// Check obj dimension vs template dimension
+		cv::Mat objImg;
+
+		if (obj.m_bbox.width < templ.m_img.cols || obj.m_bbox.height < templ.m_img.rows) {
+			cv::Rect largerBbox = enlargeBbox(obj.m_bbox, templ.m_img.size(), frameImg.size());
+			objImg = frameImg(largerBbox);
+		}
+		else
+			objImg = frameImg(obj.m_bbox);
+
+		if (isTemplateMatch(objImg, templ.m_img, thres))
+			return true;
+	}
+
+	return false;
+}
+
 
 int CDecipher::Siren()
 {
@@ -873,3 +1076,46 @@ std::vector <CObject> CDecipher::getTrkObjsToRenew()
 
 }
 
+
+/*------------------------------------------------------------------------------------------------------------
+* Read false images from (const) folder 
+* File name convension is:
+*   false_camid_XX.jpg\png\etc.
+ ------------------------------------------------------------------------------------------------------------*/
+int CDecipher::readFalseList()
+{
+	const std::filesystem::path FalseFolder{ R"(C:\Program Files\Bauotech\dll\algo\data\)" };
+
+	if (!UTILS::isFolderExist(R"(C:\Program Files\Bauotech\dll\algo\data\)"))
+		return 0;
+
+	for (auto const& dir_entry : std::filesystem::directory_iterator{ FalseFolder }) {
+		int camID = -1;
+		std::string sPath = dir_entry.path().generic_string(); // convert to string 
+
+		// get cam ID:
+		//----------------------------------------------------------------
+		std::string sFName = dir_entry.path().filename().generic_string();
+		std::string sExt = dir_entry.path().extension().generic_string();
+		
+		auto ptr = sFName.find("camid_");
+		if (ptr != std::string::npos) {
+			auto dot = sFName.find(".");
+			
+			int IDStrLen = dot - ptr - 6;
+			std::string sCamid = sFName.substr(ptr + 6, IDStrLen);
+			camID = atoi(sCamid.c_str());
+		}
+		//----------------------------------------------------------------
+
+		// Add false-image to the list
+		if (camID == m_camID)  {
+			cv::Mat falseImg = cv::imread(sPath);
+			Labels alertLabel = Labels::person; // DDEBUG DDEBUG DDEBUG CONST 
+			m_falseTamplates.push_back({ camID, falseImg, alertLabel });
+		}
+	}
+
+	return m_falseTamplates.size();
+
+}

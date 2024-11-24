@@ -2,7 +2,8 @@
 // ConsoleApplication2.cpp : Shoval_sc test app
 //============================================================================
 #include <iostream>
-#include <thread>        
+#include <thread>
+#include <string>
 #include "opencv2/opencv.hpp"
 #include "opencv2/core/core.hpp"
 #include "utils.hpp"
@@ -12,9 +13,9 @@
 #include "../BauotechAIConnectorDll/alert.hpp"
 
 #include "draw.hpp"
+#include <format>
 
-
-std::vector <cv::Scalar> g_colors = { cv::Scalar(255,0,0), cv::Scalar(0,255,0), cv::Scalar(0,0,255), cv::Scalar(255,255,0), cv::Scalar(255,0,255), cv::Scalar(0,255,255) , cv::Scalar(155,55,0), cv::Scalar(25,0,55), cv::Scalar(110,155,255), cv::Scalar(0,0,0) };
+std::vector <cv::Scalar> g_colors = { cv::Scalar(255,0,0), cv::Scalar(0,255,0), cv::Scalar(0,0,255), cv::Scalar(255,255,0), cv::Scalar(255,0,255), cv::Scalar(0,255,255) , cv::Scalar(155,55,0), cv::Scalar(25,0,55), cv::Scalar(0,0,0) , cv::Scalar(110,155,255) };
 
 void CDISPLAY::drawPolygon(cv::Mat& img, std::vector< cv::Point> contour, float scale)
 {
@@ -51,14 +52,13 @@ void CDISPLAY::drawInfo(cv::Mat& img, std::vector <CAlert> camsInfo)
 
 
 /* return cv::waitKey() */
-int CDISPLAY::draw(int height, int width, char *pData, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, std::vector <CAlert> g_cameraInfos, int framenum, float scale , bool invertImg)
+int CDISPLAY::draw(int height, int width, char *pData, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, std::vector <CAlert> g_cameraInfos, int frameNum, bool invertImg)
 {
 	static int wait = 1;
 	int videoTodisplayInd = 0;
 	int key;
+	float scale = width < 1400 ? 1.0 : 1400. / (float)width;
 
-	if (width < 500)
-		scale = 1.0;
 
 	cv::Mat frameAfter = cv::Mat(height, width, CV_8UC3, pData);
 	if (invertImg)
@@ -69,13 +69,12 @@ int CDISPLAY::draw(int height, int width, char *pData, std::vector <ALGO_DETECTI
 	//--------------------
 	if (!g_cameraInfos.empty()) {
 		std::vector<CAlert>::iterator iter = g_cameraInfos.begin();
-		//iter = std::find_if(g_cameraInfos.begin(), g_cameraInfos.end(),[&videoTodisplayInd](const CAlert& alert) { return alert.m_camID == videoTodisplayInd; });
 
 		std::vector <CAlert> curCamPolys;
 		while ((iter = std::find_if(iter, g_cameraInfos.end(), [&videoTodisplayInd](const CAlert& alert) { return alert.m_camID == videoTodisplayInd; })) != g_cameraInfos.end()) {
 			curCamPolys.push_back(*iter);
 			iter++;
-		}
+		} 
 
 		drawInfo(frameAfter, curCamPolys); 
 	}
@@ -83,19 +82,32 @@ int CDISPLAY::draw(int height, int width, char *pData, std::vector <ALGO_DETECTI
 	//----------------------
 	// -2- Draw detections 
 	//----------------------
-
-
 	bool displayPerID = true; // DDEBUG flag
+
 
 	if (displayPerID)
 		for (auto obj : AIObjects) {
 			int colorInd = obj.ObjectType % g_colors.size();
-			int thickness = 2;
-			if (obj.DetectionPercentage == 9999) // TRICK TO REVEAL MOTION TYPE (9999 = static)
-				thickness *= 3;
+			//if (frameNum > obj.frameNum)   colorInd = 8; // BLACK
 
-			cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[colorInd], thickness);
-			cv::putText(frameAfter, std::to_string(obj.ID), cv::Point(obj.X, obj.Y - 5), cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(255, 0, 255));
+			int thickness = 2;
+			if (obj.DetectionPercentage < 0) { // TRICK TO REVEAL MOTION TYPE (static = negative)
+				//thickness *= 3;
+				cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[colorInd], thickness);
+				cv::rectangle(frameAfter, cv::Rect(obj.X - thickness, obj.Y - thickness, obj.Width + thickness*2, obj.Height + thickness * 2), g_colors[colorInd+1], thickness);
+			}
+			else
+				cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[colorInd], thickness);
+			bool draw_confidence = false; // confidence OR objID
+			if (draw_confidence)
+			{	// draw Object confidence (ubless its trick for Static obj 9999...)
+				//cv::putText(frameAfter, std::format("{:.2f}", obj.DetectionPercentage), cv::Point(obj.X, obj.Y - 5), cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(255, 0, 255));
+				cv::putText(frameAfter, std::to_string(obj.DetectionPercentage)+"%", cv::Point(obj.X, obj.Y - 5), cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(255, 0, 255));
+			}
+			else
+				// draw Object ID
+				cv::putText(frameAfter, std::to_string(obj.ID), cv::Point(obj.X, obj.Y - 5), cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(255, 0, 255));
+
 			cv::putText(frameAfter, std::to_string(obj.ObjectType), cv::Point(obj.X, obj.Y + obj.Width - 2), cv::FONT_HERSHEY_DUPLEX, 0.7, cv::Scalar(0,0,0));
 		}
 	else 
@@ -121,17 +133,21 @@ int CDISPLAY::draw(int height, int width, char *pData, std::vector <ALGO_DETECTI
 
 	////------------------
 	cv::Mat display;
-	//float scale = 0.7;
 	cv::resize(frameAfter, display, cv::Size(0, 0), scale, scale);
 
 
-	cv::putText(display, std::to_string(framenum), cv::Point(display.cols - 170, display.rows - 50), cv::FONT_HERSHEY_DUPLEX, 2.0, cv::Scalar(0, 0, 255));
+	cv::putText(display, std::to_string(frameNum), cv::Point(display.cols - 170, display.rows - 50), cv::FONT_HERSHEY_DUPLEX, 2.0, cv::Scalar(0, 0, 255));
 
 	if (!AIObjects.empty()) {
 		cv::putText(display, "D"+std::to_string(AIObjects.size()), cv::Point(20, display.rows - 50), cv::FONT_HERSHEY_DUPLEX, 2.0, cv::Scalar(0, 0, 255));
 		//std::cout << "Frame " << frameNum << " : " << AIObjects[0].x << " , " << AIObjects[0].y << "\n";
 	}
 
+
+	if (display.cols > 1200) {
+		float scale = 1200. / (float)display.cols;
+		cv::resize(display, display, cv::Size(0, 0), scale, scale);
+	}
 	cv::imshow("processed-image", display);
 	key = cv::waitKey(wait);
 	if (key == 'p')
@@ -143,12 +159,15 @@ int CDISPLAY::draw(int height, int width, char *pData, std::vector <ALGO_DETECTI
 }
 
 
-int CDISPLAY::draw(cv::Mat frameAfter, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, std::vector <CAlert> g_cameraInfos, int framenum, float scale, bool invertImg)
+int CDISPLAY::draw(cv::Mat frameAfter, std::vector <ALGO_DETECTION_OBJECT_DATA> AIObjects, std::vector <CAlert> g_cameraInfos, int frameNum, bool invertImg)
 {
 
 	static int wait = 1;
 	int videoTodisplayInd = 0;
 	int key;
+
+	float scale = frameAfter.cols < 1400 ? 1.0 : 1400. / (float)frameAfter.cols;
+
 
 	if (invertImg)
 		cv::flip(frameAfter, frameAfter, 0);
@@ -215,7 +234,7 @@ int CDISPLAY::draw(cv::Mat frameAfter, std::vector <ALGO_DETECTION_OBJECT_DATA> 
 	cv::resize(frameAfter, display, cv::Size(0, 0), scale, scale);
 
 
-	cv::putText(display, std::to_string(framenum), cv::Point(display.cols - 170, display.rows - 50), cv::FONT_HERSHEY_DUPLEX, 2.0, cv::Scalar(0, 0, 255));
+	cv::putText(display, std::to_string(frameNum), cv::Point(display.cols - 170, display.rows - 50), cv::FONT_HERSHEY_DUPLEX, 2.0, cv::Scalar(0, 0, 255));
 
 	if (!AIObjects.empty()) {
 		cv::putText(display, "D" + std::to_string(AIObjects.size()), cv::Point(20, display.rows - 50), cv::FONT_HERSHEY_DUPLEX, 2.0, cv::Scalar(0, 0, 255));

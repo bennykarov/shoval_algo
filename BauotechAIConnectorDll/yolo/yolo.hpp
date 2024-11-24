@@ -2,35 +2,25 @@
 
 
 // LearnOpencv model builtin 
-#if 1
+#if 0 // DDEBUG 
 const std::string YOLO_MODEL_NAME = "yolov8s.onnx";
-//const std::string YOLO_MODEL_NAME = "yoloV10\\yolov8s_640_480.onnx";
 const float YOLO_INPUT_WIDTH = 640.0;
 const float YOLO_INPUT_HEIGHT = 480.0;
 #else 
-//const std::string YOLO_MODEL_NAME = "yoloV10\\yolov8s.onnx";
-//const std::string YOLO_MODEL_NAME = "yoloV10\\yolov10s.onnx";
-const std::string YOLO_MODEL_NAME = "yoloV10\\yolov10s_ultra.onnx";
-
+//const std::string YOLO_MODEL_NAME = "yolov8m_640.onnx";
+const std::string YOLO_MODEL_NAME = "yolov8l_640.onnx";
+//const std::string YOLO_MODEL_NAME = "yolov8s_640.onnx";
 const float YOLO_INPUT_WIDTH = 640.0;
 const float YOLO_INPUT_HEIGHT = 640.0;
 #endif 
-/*
-const float YOLO5_INPUT_WIDTH = 640.0;
-const float YOLO5_INPUT_HEIGHT = 640.0;
-
-const float YOLO8_INPUT_WIDTH = 640.0;
-const float YOLO8_INPUT_HEIGHT = 480.0;
-//const float YOLO8_INPUT_HEIGHT = 640.0;
-*/
 const int VEHICLE_CLASS_ID = 999;
 
 // YOLO Thresholds 
 
-const float YOLO_CONFIDENCE_THRESHOLD = 0.55;
-const float YOLO_PERSON_CONFIDENCE_THRESHOLD = 0.1; //0.4   0.15; 
-const float YOLO_CONFIDENCE_THRESHOLD_SMALL_DIM = 0.7; // fro small boxes (20*20)
-const float YOLO_CONFIDENCE_MIN_THRESHOLD = 0.4;
+const float YOLO_MIN_CONFIDENCE = 0.1; // Must be the max of MIN_CENFIDENCE in concluder.cpp !!!
+
+const float YOLO_HIGH_CONFIDENCE = 0.7; // small boxe must have stron confidence 
+//const float YOLO_CONFIDENCE_MIN_THRESHOLD = 0.4;
 const float NMS_THRESHOLD = 0.5;
 
 

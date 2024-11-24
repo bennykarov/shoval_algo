@@ -27,6 +27,12 @@ public:
 		return m_elapsed.count();
 	}
 
+	int64_t stamp()
+	{
+		m_cur_time = std::chrono::system_clock::now();
+		return std::chrono::duration_cast<std::chrono::milliseconds>(m_cur_time.time_since_epoch()).count();
+	}
+
 	double  sampleFromStart()
 	{
 		m_cur_time = std::chrono::system_clock::now();

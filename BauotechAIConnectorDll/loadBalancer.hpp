@@ -5,6 +5,7 @@
 #include <thread>
 #include <mutex> 
 #include <queue>
+#include <vector>
 #include <condition_variable> 
 
 #include "timer.hpp"
@@ -18,8 +19,6 @@
 //#include "updatable_priority_queue.h"
 
 #define CYCLE_MS 500.
-//#define MaxCameras  20
-
 typedef void (*CameraRequestCallback)(const uint32_t camera[], int size); // (was taking from algoApi.h)
 
 
@@ -39,20 +38,24 @@ enum OBJECT_STATUS {
 };
 
 
+static  std::vector<int> ValidSchemeNum = { 0,1,2,3, 20,21, 30,31, 200,201, 300,301,302 };
+
+static bool isValidSchemeNum(int val) { return         std::find(ValidSchemeNum.begin(), ValidSchemeNum.end(), val) != ValidSchemeNum.end(); }
+
 enum LB_SCHEME {
     V0 = 0,
     V1,
     V2,
     V3,
     // simple 
-    V20,
+    V20=20,
     V21,
-    V30,
+    V30=30,
     V31,
     // smooth 
-    V200,
+    V200=200,
     V201,
-    V300,
+    V300=300,
     V301,
     V302
 };
@@ -107,8 +110,10 @@ public:
 enum AQUIRE_ERROR {
     OK = 0,
     RESOURCE_OVERFLOW = 1,
-    NOT_IN_TOP = 2,
-    NOT_ACTIVE = 3
+    NOT_IN_LIST,
+    NOT_IN_TOP ,
+    DUPLICATE_AQUIRED ,
+    NOT_ACTIVE 
 };
 
 
@@ -187,12 +192,13 @@ class CLoadBalaner  {
 public:
     
     bool isActive() { return m_active; }
-    int init(LB_SCHEME scheme = LB_SCHEME::V301);
+    int init(uint32_t* batchSize);
+    //int init(LB_SCHEME scheme = LB_SCHEME::V301);
     void stop() 
     {
             m_terminate = true;
     }
-    AQUIRE_ERROR acquire(int camID, bool allowOverflow=false);
+    AQUIRE_ERROR acquire(int camID);
     void remove(int camID);
     bool releaseDebug(int camID);
 
@@ -202,7 +208,7 @@ public:
     bool priorityUpdateTop(); // Handle top cam in queue
 
     // Callback for camera threads 
-    static void ResQueuePush(CCycle);
+    void ResQueuePush(CCycle);
     static void ResQueueNotify();
     /*
     static std::queue<CCycle>* getResQueuePtr();
@@ -213,8 +219,7 @@ public:
 
     void cameraCounter(int cams); // { m_camerasLen += cams;  } // Add or remove cameras counter
     void initCamera(int videoIndex);
-    void SetCameraRequestCallback(CameraRequestCallback callback) { m_bachCallback = callback; }
-
+    void SetCameraRequestCallback(CameraRequestCallback callback); 
     void SetCameraType(int camID, int type);
 
     // DDEBUG tests:
@@ -280,7 +285,9 @@ private:
 
 private:
     std::vector <int>   m_cameraBatchList; // list sent to server 
-    std::vector <int>   m_cameraBatchListDone; // list sent to server 
+    //std::vector <int>   m_cameraBatchListDone; // list sent to server 
+    //ThreadSafeVector <int>  m_cameraBatchListDone; 
+    std::vector <int>   m_cameraBatchListAquired; // list sent to server 
 
     std::vector <int>   m_cameraBatchList_prev; // list sent to server 
     std::vector <int>   m_camsProcessed; // cameras had been process (return in resQueue)
@@ -379,35 +386,6 @@ std::condition_variable* getResCondVPtr()
 
 void test_async() {}
 void test() {}
-
-};
-#endif 
-
-#if 0
-class CLaunchList {
-private:
-    std::mutex mtxList[MAX_CAMERAS];
-    std::vector <int> camList;
-
-public:
-    void add(int camID)
-    {
-        std::lock_guard<std::mutex> bufferLockGuard(mtxList[camID]);
-        camList.push_back(camID);
-    }
-
-    void release(int camID)
-    {
-        std::lock_guard<std::mutex> bufferLockGuard(mtxList[camID]);
-        auto it = std::find(camList.begin(), camList.end(), camID);
-        if (it != camList.end()) {
-            camList.erase(it);
-        }
-    }
-
-    std::vector <int> getCamList() { return camList; }
-
-    int len() { return camList.size(); }
 
 };
 #endif 

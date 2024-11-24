@@ -1,4 +1,6 @@
 //#include "AlgoApi.h"
+//#include <winver.h>
+//#include <windows.h>
 #include <unordered_map>
 #include <string>
 #include <fstream> // debug file
@@ -25,14 +27,53 @@ typedef struct tagRGB32TRIPLE {
 } RGB32TRIPLE;
 
 
+const std::string VERSION_NUM = "1.3.0";
 
+
+
+std::string GetDllVersion(const std::string& dllPath) {
+	// Convert the file path to a wide string
+	std::wstring widePath(dllPath.begin(), dllPath.end());
+
+	// Get the size of the version information
+	DWORD dummy;
+	DWORD versionInfoSize = GetFileVersionInfoSizeW(widePath.c_str(), &dummy);
+	if (versionInfoSize == 0) {
+		std::cerr << "Error getting version info size: " << GetLastError() << std::endl;
+		return "";
+	}
+
+	// Allocate memory for version information
+	std::vector<BYTE> versionInfo(versionInfoSize);
+	if (!GetFileVersionInfoW(widePath.c_str(), 0, versionInfoSize, versionInfo.data())) {
+		std::cerr << "Error getting version info: " << GetLastError() << std::endl;
+		return "";
+	}
+
+	// Get the root block of the version information
+	VS_FIXEDFILEINFO* fixedFileInfo;
+	UINT size;
+	if (!VerQueryValueW(versionInfo.data(), L"\\", reinterpret_cast<LPVOID*>(&fixedFileInfo), &size)) {
+		std::cerr << "Error querying version info: " << GetLastError() << std::endl;
+		return "";
+	}
+
+	// Extract version information
+	DWORD major = HIWORD(fixedFileInfo->dwFileVersionMS);
+	DWORD minor = LOWORD(fixedFileInfo->dwFileVersionMS);
+	DWORD build = HIWORD(fixedFileInfo->dwFileVersionLS);
+	DWORD revision = LOWORD(fixedFileInfo->dwFileVersionLS);
+
+	// Format the version string
+	return std::to_string(major) + "." + std::to_string(minor) + "." +
+		std::to_string(build) + "." + std::to_string(revision);
+}
 
 //--------------------------------------------------------------------------------------------------------
 //  G L O B A L S   !
 // Define a global critical section
 CRITICAL_SECTION gCriticalSection;
 bool m_initialize = false;
-//CLogger2& logger2;
 
 CameraRequestCallback gCameraRequestCallback = nullptr; // moved from header file
 std::unordered_map<uint32_t, CameraAICallback> gAICllbacks;
@@ -41,8 +82,6 @@ CLoadBalaner  g_loadBalancer;
 //CSemaphore  g_ResourceSemaphore;
 CAlgoProcess   g_algoProcess[MAX_VIDEOS];
 TSBuffQueue g_bufQ[MAX_VIDEOS];
-//INIT_LOGGER
-//CLogger2* CLogger2::instance = nullptr;
 //--------------------------------------------------------------------------------------------------------
 
 API_EXPORT void Crash()
@@ -57,35 +96,35 @@ API_EXPORT void AlgoSetTime(int hour, int min, int sec)
 
 }
  
-API_EXPORT void BauotechAlgoConnector_Init()
+API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer)
 {
 
 	if (m_initialize) // DDEBUG avoid duplicate call !!!! 
-		return;
+		return 0;
 
 	InitializeCriticalSection(&gCriticalSection);
-
-	//CLogger2& logger2 = CLogger2::getInstance();
-
 
 		
 	int debugLevel = 1;
 	if (debugLevel > 0) {
-		//LOGGER::init(FILES::OUTPUT_FOLDER_NAME, DLEVEL::WARNING2);
+		//LOGGER::init(FILES::OUTPUT_FOLDER_NAME, DLEVEL::INFO2);
 		LOGGER::init(FILES::OUTPUT_FOLDER_NAME, DLEVEL::DEBUG_HIGH);
+		std::string dllFilePath = "C:\\Program Files\\Bauotech\\dll\\algo\\BauotechAlgoConnector.dll";
+		LOGGER::log(DLEVEL::DEBUG_HIGH, "BauotechAlgoConnector DLL version = " + GetDllVersion(dllFilePath));
+		
 	}
 	LOGGER::log(DLEVEL::INFO1, "BauotechAlgoConnector_Init()");
 
-	bool runloadBalancer = true; // DDEBUG FLAG
-
-	if (runloadBalancer)
-		//g_loadBalancer.init(LB_SCHEME::V0); // DDEBUG DDEBUG TEST
-		g_loadBalancer.init(LB_SCHEME::V302);
+	uint32_t batchSize; // Eli changes - right now the 'batchSize' init inside g_loadBalancer.init() from config 
+	if (runloadBalancer == true)
+		g_loadBalancer.init(&batchSize);
 	else
-		LOGGER::log(DLEVEL::WARNING1, " RUNNIG  W I T H O U T  LOAD BALANCER  !!!!!");
-
+		LOGGER::log(DLEVEL::DEBUG_HIGH, " RUNNIG  W I T H O U T  LOAD BALANCER  !!!!!");
 
 	m_initialize = true;
+
+
+	return (int)batchSize;
 }
 
 API_EXPORT void BauotechAlgoConnector_Release()
@@ -132,25 +171,21 @@ API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int 
 /*-------------------------------------------------------------------------------------------------------------------
 *  runner use the TSBuffQeue buffering
  -------------------------------------------------------------------------------------------------------------------*/
-API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber)
+API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, uint64_t frameNumber, int64_t timestamp)
 {
-	
+	bool forceList = true; // ignore input not in Loadbalncer cameraList
 
-	// Load balancer Aquire - quit if not allowed (if allowOverflow = true)
-	bool processNotInList = false;
-	
-	auto error = g_loadBalancer.acquire(videoIndex, processNotInList);
+	// Load balancer Aquire - quit if not allowed (if allowOverflow = true)	
+	auto error = g_loadBalancer.acquire(videoIndex);
 	if (error != AQUIRE_ERROR::NOT_ACTIVE && error != AQUIRE_ERROR::OK)
 	{
-		std::string errorMsg = "LB Ignors cam #" + std::to_string(videoIndex) + " (error = " + std::to_string(error) + "(not in batch list)\n";
-		LOGGER::log(DLEVEL::DEBUG_HIGH, errorMsg);
-		//LOGGER::log(DLEVEL::WARNING2, errorMsg);
-		if (!processNotInList)
+		LOGGER::log(DLEVEL::DEBUG_HIGH, "LB Ignors cam #" + std::to_string(videoIndex));
+		if (forceList)
 			return false;	
 	}
 
 	// Push buffer 
-	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, (char*)pData));
+	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, timestamp, (char*)pData));
 	g_algoProcess[videoIndex].WakeUp();
 
 	return ok ? 1 : 0;

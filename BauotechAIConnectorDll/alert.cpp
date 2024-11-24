@@ -64,7 +64,7 @@ std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
 
 	for (auto obj : objects) {
         if (obj.m_label == m_label && 
-            (m_motionType == MotionType::MotionOrNot || (m_motionType == MotionType::OnlyMoving && obj.m_moving > 0) || (m_motionType == MotionType::OnlyStatics && obj.m_moving <= 0)) &&
+            (m_motionType == MotionType::MotionOrNot || (m_motionType == MotionType::OnlyMoving && obj.isMoving()) || (m_motionType == MotionType::OnlyStatics && !obj.isMoving())) &&
             cv::pointPolygonTest(m_polyPoints, obj.center(), false) > 0)
             selected.push_back(obj);
         //else   bool debug = cv::pointPolygonTest(m_polyPoints, obj.center(), false);
