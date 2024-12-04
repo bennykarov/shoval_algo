@@ -267,7 +267,6 @@ bool FILE_UTILS::readConfigFile(std::string ConfigFName, Config& conf)
     // [GENERAL]
     conf.videoName = pt.get<std::string>("GENERAL.video", conf.videoName);
     conf.roisName = pt.get<std::string>("GENERAL.rois", conf.roisName);
-    conf.waitKeyTime = pt.get<int>("GENERAL.delay-ms", conf.waitKeyTime);
     conf.record = pt.get<int>("GENERAL.record", conf.record);
     conf.debugLevel = pt.get<int>("GENERAL.debug", conf.debugLevel);
     conf.debugLevel_LB = pt.get<int>("GENERAL.debug_LB", conf.debugLevel_LB);

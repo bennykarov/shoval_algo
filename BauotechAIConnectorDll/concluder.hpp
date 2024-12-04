@@ -13,17 +13,24 @@ namespace CONCLUDER_CONSTANTS
 	const int MAX_MOTION_PER_FRAME = 20;//  10;
 	const int GOOD_TRACKING_LEN = 20;
 	const int KEEP_MOVING_HIDDEN_FRAMES = 10;  
-	const int KEEP_STATIC_HIDDEN_FRAMES = 30*5; 
+	const int KEEP_STATIC_HIDDEN_FRAMES = 30*60; 
 	const int MAX_MOVING_SIREN_HIDDEN_FRAMES = 2;
 	const int MAX_STATIC_SIREN_HIDDEN_FRAMES = 30;
+
 	// YOLO related const:
 	const int MIN_STDDEV_FOR_BOX = 20; // min color variation (contrast) rquired in detection image
 	const float MIN_BOX_RATION_FOR_PERSON = 0.8; // Person box should be nerrow (far from square)
 	const float HIGH_YOLO_CONFIDENCE = 0.9; // Person box should be nerrow (far from square)
 	const int MIN_STABLE_DETECTION_FRAMES = 2; // 1 for load balancer where framerate is LOW ;
-	const int MIN_STABLE_STATIC_FRAMES = 10;//  10;//  15; // 30;
 
-	const float GOOD_STATIC_OVERLAPED_AREA = 0.8;
+	const int MIN_SHORT_STATIC_FRAMES = 2; // 3;//  10;//  15; // 30;
+	const int MIN_STATIC_FRAMES = 8;//  10;//  15; // 30;
+	const int MIN_STABLE_STATIC_FRAMES = 15;//  10;//  15; // 30;
+	const int MIN_STATIC_FRAMES_TO_KEEP_LONGER = 3;
+
+
+	const float SENIOR_GOOD_STATIC_OVERLAPED_AREA = 0.6; 
+	const float GOOD_STATIC_OVERLAPED_AREA = 0.75; 
 	const float GOOD_MOVING_OVERLAPED_AREA = 0.3;
 
 
@@ -32,14 +39,6 @@ namespace CONCLUDER_CONSTANTS
 using namespace CONCLUDER_CONSTANTS;
 
 
-inline int GET_KEEP_HIDDEN_FRAMES(std::vector <CObject> obj)
-{
-	if (obj.back().m_moving > -CONCLUDER_CONSTANTS::MIN_STABLE_STATIC_FRAMES)
-		return MIN(KEEP_MOVING_HIDDEN_FRAMES, obj.size());
-	else
-		return KEEP_STATIC_HIDDEN_FRAMES;
-
-}
 
 
 /*-----------------------------------------------------------------------------
@@ -51,9 +50,6 @@ inline int GET_KEEP_HIDDEN_FRAMES(std::vector <CObject> obj)
  *-----------------------------------------------------------------------------*/
 inline bool isStableStaticObj(CObject obj)
 {
-	// All (4 and more) frames are static ( except the first one , first starts with motion=1)
-	//if (obj.m_age >= 4  && obj.m_moving ==  -(obj.m_age-1))		return true;
-
 	return obj.m_moving <= -CONCLUDER_CONSTANTS::MIN_STABLE_STATIC_FRAMES;
 }
 
@@ -106,11 +102,11 @@ public:
 	void add_(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum);
 	//std::vector <int>    add(std::vector <cv::Rect>& trackerOutput, std::vector <YDetection> YoloOutput, int frameNum);
 	std::vector <int>    add(std::vector <CObject>& trackerOutput, std::vector <YDetection> YoloOutput, int frameNum);
-	void add(std::vector <YDetection> YoloOutput,int frameNum);
+	void consolidate(std::vector <YDetection> YoloOutput,int frameNum);
 	int addTrackerObjects(std::vector <CObject> trackerOutput, std::vector <YDetection> YoloOutput, int frameNum, bool prevWasYolo);
 	//static std::vector <std::tuple<int, int>>  findDuplicated2(std::vector <cv::Rect> trackerBoxes, std::vector <cv::Rect> yoloBoxes);
 	int track_old();
-	int track(int mode, std::vector <cv::Rect>  m_BGSEGoutput = std::vector <cv::Rect>());
+	int consolidate(int mode, std::vector <cv::Rect>  m_BGSEGoutput = std::vector <cv::Rect>());
 	std::vector <CObject> getObjects(int frameNum = -1); 
 	std::vector <CObject> getObjects(Labels label); 
 	std::vector <CObject> getNewObjects(int frameNum = -1); 
@@ -157,7 +153,10 @@ private:
 	std::vector <int>  findDuplicated(std::vector <cv::Rect> trackerBoxes, std::vector <cv::Rect> yoloBoxes);
 	std::vector <int> removeDuplicated(std::vector <cv::Rect>& trackerOutput, std::vector <YDetection> YoloOutput);
 	bool isMoving(std::vector <CObject> obj);
-	int  isStatic(std::vector <CObject> obj, std::vector <cv::Rect>  BGSEGoutput);
+	int GET_KEEP_HIDDEN_FRAMES(std::vector <CObject> obj);
+	//STATIC_MODE  staticMode(std::vector <CObject> obj, std::vector <cv::Rect>  BGSEGoutput);
+	int  checkIfStatic(std::vector <CObject> obj, std::vector <cv::Rect>  BGSEGoutput = std::vector <cv::Rect>());
+	bool isLastStatic(std::vector <CObject> obj, int len);
 	bool isLarge(std::vector <CObject> obj);
 	bool isHidden(std::vector <CObject> obj) { return obj.back().m_frameNum < m_frameNum; }
 	bool isHidden(CObject obj) { return obj.m_frameNum < m_frameNum; }
@@ -186,6 +185,7 @@ private:
 	CsimplePredict  m_predictor;
 	std::vector <std::vector <CObject>> m_objects;
 	std::vector <CObject> m_detectedObjects;
+	std::vector <CObject> m_staticObjects;
 
 	int m_idCounter = 0;
 	bool m_active = false;

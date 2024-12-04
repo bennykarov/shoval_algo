@@ -271,7 +271,7 @@ CAlgoProcess::~CAlgoProcess()
 				m_alertCount = m_tracker.getAlertObjectsCount(); // Alert objects - all exceeds maxAllowed 
 			}
 			catch (const std::exception& err) {
-				LOGGER::log(DLEVEL::ERROR1, "Exception : algProcess main process (convert & m_tracker.process():");
+				LOGGER::log(DLEVEL::ERROR1, "Exception : algProcess main process (convert & m_tracker.process() m_videoIndex=" + std::to_string(m_videoIndex) + ":");
 				LOGGER::log(DLEVEL::ERROR1, err.what());
 			}
 
@@ -303,7 +303,7 @@ CAlgoProcess::~CAlgoProcess()
 			// POST PROCESS AREA:
 			//=======================================================================================================================================
 
-			if (1) // DDEBUG PRINT 
+			if (0) // DDEBUG PRINT 
 				if (m_objectCount > 0)
 					LOGGER::log(DLEVEL::INFO2, std::string("Cam " + std::to_string(m_videoIndex) + " Detects : " + std::to_string(m_objectCount) + "objects"));
 

@@ -4,6 +4,7 @@
 #include <opencv2/tracking.hpp>
 #include <opencv2/tracking/tracking_legacy.hpp>
 
+#include "utils.hpp"
 #include "CObject.hpp"
 
 
@@ -50,6 +51,44 @@ inline cv::Ptr<cv::Tracker> createTrackerByName(const std::string& name)
 		tracker = legacy::upgradeTrackingAPI(legacy::TrackerMOSSE::create());
 	else if (name == "CSRT")
 		tracker = cv::TrackerCSRT::create();
+	else if (name == "SIAM_RPN") {
+		std::string m_pathToModel = "c:\\data\\models";
+		std::string net;// = parser.get<String>("net");
+		std::string kernel_cls1;// = parser.get<String>("kernel_cls1");
+		std::string kernel_r1;// = parser.get<String>("kernel_r1");
+		int backend;// = parser.get<int>("backend");
+		int target;// = parser.get<int>("target");
+
+
+		//inputName = R"(C:\Data\office\office_multiCars.ts)";
+		net = m_pathToModel + "\\dasiamrpn_model.onnx"; // R"(C:\Data\models\dasiamrpn_model.onnx)";
+		kernel_cls1 = m_pathToModel + "\\dasiamrpn_kernel_cls1.onnx";
+		kernel_r1 = m_pathToModel + "\\dasiamrpn_kernel_r1.onnx";
+		backend = 5; //  CUDA
+		target = 7;  //  6=CUDA OR 7=CUDA 16fp 
+
+		if (!UTILS::isFileExist(net))
+		{
+			std::cout << "missing SIAM tracker file  " << net << "\n"; return tracker;
+		}
+		if (!UTILS::isFileExist(kernel_cls1))
+		{
+			std::cout << "missing SIAM tracker file " << kernel_cls1 << "\n"; return tracker;
+		}
+		if (!UTILS::isFileExist(kernel_r1))
+		{
+			std::cout << "missing SIAM tracker file  " << kernel_r1 << "\n"; return tracker;
+		}
+
+		TrackerDaSiamRPN::Params params;
+		params.model = samples::findFile(net);
+		params.kernel_cls1 = samples::findFile(kernel_cls1);
+		params.kernel_r1 = samples::findFile(kernel_r1);
+		params.backend = backend;
+		params.target = target;
+		tracker = TrackerDaSiamRPN::create(params);
+
+	}
 	else
 		CV_Error(cv::Error::StsBadArg, "Invalid tracking algorithm name\n");
 
@@ -146,10 +185,11 @@ public:
 
 	void setROIs(std::vector <cv::Rect> bboxes, std::vector <int> objID, std::vector <int> label , cv::Mat frame, bool clearHistory = false);
 
+	/*
 	int  track_(cv::Mat frame, std::vector<cv::Rect>& trackerOutput);
 	int  track(cv::Mat frame, std::vector<cv::Rect>& trackerOutput);
+	*/
 	int  track(cv::Mat frame, std::vector<CObject>& trackerOutput, int frameNum);
-	//bool  track(cv::Mat frame, cv::Rect roi);
 	void setROI(const cv::Mat& img, cv::Rect bbox);
 	bool isActive() { return m_frameNum > 0; }
 	bool isDetected() { return falseDetectionLen == 0; } // currently detected
@@ -169,9 +209,7 @@ public:
 
 
 private:
-	// 										0		   1	  2      3       4           5         6
-	//std::string m_trackerTypes_str[7] = {"BOOSTING", "MIL", "KCF", "TLD","MEDIANFLOW", "GOTURN", "CSRT"};
-	std::vector  <std::string> m_trackerTypes_str = { "KCF","TLD","BOOSTING","MEDIAN_FLOW","MIL","GOTURN","MOSSE" ,"CSRT" };
+	std::vector  <std::string> m_trackerTypes_str = { "KCF","TLD","BOOSTING","MEDIAN_FLOW","MIL","GOTURN","MOSSE" ,"CSRT", "SIAM_RPN"};
 
 	// vector <string> trackerTypes(types, std::end(types));
 	int m_trackerType = 6;
@@ -183,8 +221,9 @@ private:
 
 	int m_badFramesToReset = MAX_BAD_DETECTION_SEC * CONSTANTS::FPS;
 
-	cv::legacy::MultiTracker  m_multiTracker;
+	//cv::legacy::MultiTracker  m_multiTracker;
 
+	//std::vector<Ptr<Tracker>> m_algorithms; // TRACKER_NO_LEGACY 
 	std::vector<Ptr<legacy::Tracker>> m_algorithms;
 	std::vector <cv::Rect2d> m_bboxs;
 	std::vector <int> m_objID;

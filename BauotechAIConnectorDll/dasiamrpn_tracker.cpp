@@ -109,8 +109,9 @@ std::vector <tuple<int, int>>  findDuplicated(std::vector <cv::Rect>  trackerBox
             cv::Rect box2 = yoloBoxes[j];
 
 
-            if (OverlappingRatio2(box1, box2) > similarOverlappingRatio) {
-                trackRemoveIndices.push_back(i);
+            //if (OverlappingRatio2(box1, box2) > similarOverlappingRatio) {
+            if (OverlappingRatio(box1, box2) > similarOverlappingRatio) {
+            trackRemoveIndices.push_back(i);
                 yoloRemoveIndices.push_back(j);
                 matchedIndices.push_back(std::make_tuple(i, j));
                 j = 1000; continue;// out of yoloBoxes loop

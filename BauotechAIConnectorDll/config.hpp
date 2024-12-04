@@ -23,8 +23,6 @@ namespace CONSTANTS {
 
 	int const DEFAULT_LOADBALANCER_RESOURCE = 4;
 
-	const float MAX_BATCH_PERIOD = 1000.*0.5; // 0.5 sec
-
 };
 
 
@@ -66,17 +64,15 @@ struct Config
 	int motionDetectionType = 0;
 	int trackerType = 0;
 	int trackerStep = 1;
-	int MLType = 10;
-	float scale = 1.0; // 0.5;
-	int waitKeyTime=1;
+	int MLType = 1;
+	float scale = 1.0; 
 	int record = 0;
 
-	int debugTraceCamID = -1;
+	int debugTraceCamID = 0;
 
 	// MOG2 params:
 	int MHistory = 50;
-	float MvarThreshold = 2700.0
-		; // 580.0;
+	float MvarThreshold = 2700.0; // 580.0;
 	float MlearningRate = -1.;
 	int useGPU = 1;
 	int GPUBatchSize = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;

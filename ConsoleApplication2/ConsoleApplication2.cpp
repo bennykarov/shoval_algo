@@ -62,7 +62,7 @@ HANDLE g_hConsole;
 //int g_motionType = MotionType::OnlyMoving;
 int g_motionType = MotionType::MotionOrNot;
 //int g_skip = 0;
-float g_rotateImageAngle = 0.; // DDEBUG roate original image!
+float g_rotateImageAngle = 10.; // DDEBUG roate original image!
 
 int main_siamRPN(int argc, char** argv);
 int main_yoloTest(float confidence);
@@ -72,7 +72,7 @@ int main_yoloTest(float confidence);
 
 //cv::Size debug_resizeImg(700, 400);
 cv::Size debug_resizeImg;
-
+cv::Vec2f debug_resizeImgScale(0, 0);
 
 
 // GLOBALS:
@@ -222,6 +222,24 @@ int readCamerasJson(std::string fname, std::vector <CAlert>& cameras, int camera
 	return cameras.size();
 }
 
+cv::Mat debugResize(cv::Mat frame)
+{
+	cv::Mat _frame;
+
+	if (frame.empty())
+		return frame;
+
+	if (!debug_resizeImg.empty()) { // DDEBUG RESIZE
+		cv::resize(frame, _frame, debug_resizeImg);
+	}
+	else if (debug_resizeImgScale[0] > 0) { // DDEBUG RESIZE
+		cv::resize(frame, _frame, cv::Size(0, 0), debug_resizeImgScale[0], debug_resizeImgScale[1]);
+	}
+	else 
+		return frame;
+
+	return _frame;
+}
 
 /*------------------------------------------------------------------------------------------------------
  * Dynamic add poligons:
@@ -350,17 +368,41 @@ cv::Mat tune_imgae(cv::Mat frame, float rotateAngle=0.)
 
 
 	cv::Mat _frame;
-	cv::resize(frame, _frame, cv::Size(640, 480));
-	frame = _frame;
+	if (0)
+	{
+		cv::resize(frame, _frame, cv::Size(640, 480));
+		frame = _frame;
+	}
 	if (rotateAngle != 0) {
 		cv::Point2f center((frame.cols - 1) / 2.0, (frame.rows - 1) / 2.0);
 		cv::Mat matRotation = cv::getRotationMatrix2D(center, rotateAngle, 1.0);
 		cv::Mat rotated_image;
 		cv::warpAffine(frame, _frame, matRotation, frame.size());
+		//return _frame;
 	}
 
 
-	return _frame;
+
+	bool warpImg = true;
+	if (warpImg)
+	{
+		// perspective transform:
+		vector< cv::Point2f> roi_corners = { cv::Point2f(100.,0),cv::Point2f(251.,0) ,cv::Point2f(351.,287.) ,cv::Point2f(0,287.) };
+		vector< cv::Point2f> dst_corners = { cv::Point2f(0,0),cv::Point2f(351.,0) ,cv::Point2f(351.,287.) ,cv::Point2f(0,287.) };
+
+		cv::Mat M = cv::getPerspectiveTransform(roi_corners, dst_corners);
+
+		cv::Size warped_image_size = cv::Size(cvRound(dst_corners[2].x), cvRound(dst_corners[2].y));
+		warpPerspective(frame, _frame, M, warped_image_size); // do perspective transformation
+	}
+
+	if (_frame.empty())
+		return frame;
+	else
+		return _frame;
+
+
+
 }
 
 
@@ -469,7 +511,8 @@ int main_SHOVAL(int argc, char* argv[])
 		cv::resize(frame, _frame, cv::Size(0, 0), ScaleDown, ScaleDown);
 		frame = _frame;
 	}
-	//else    frame = tune_imgae(frame, g_rotateImageAngle);  // DDEBUG  DDEBUG  DDEBUG  DDEBUG 
+	//else frame = tune_imgae(frame, g_rotateImageAngle);  // DDEBUG DDEBUG     DDEBUG DDEBUG     DDEBUG DDEBUG     
+		  
 
 
 	if (frame.empty()) {
@@ -494,11 +537,7 @@ int main_SHOVAL(int argc, char* argv[])
 	uint32_t alertCount[MAX_VIDEOS];
 	uint32_t* pAlertCount[MAX_VIDEOS];
 
-	if (!debug_resizeImg.empty()) { // DDEBUG RESIZE
-		cv::Mat _frame;
-		cv::resize(frame, _frame, debug_resizeImg);
-		frame = _frame;
-	}
+	frame = debugResize(frame);
 
 	width = frame.cols;
 	height = frame.rows;
@@ -519,7 +558,7 @@ int main_SHOVAL(int argc, char* argv[])
 
 	// Init
 	bool runLoadBalance = true; // DDEBUG DDEBUG NO LB
-	BauotechAlgoConnector_Init(runLoadBalance);
+	BauotechAlgoConnector_Init(runLoadBalance, 1);
 
 	BauotechAlgoConnector_SetCameraRequestCallback(consoleCameraRequestCallback);
 
@@ -665,11 +704,12 @@ int main_SHOVAL(int argc, char* argv[])
 			//MessageBoxA(0, std::string("find " + std::to_string(AIObjectVec.size()) + "objects ").c_str(), "EXCEPTION!", MB_OK);
 			//std::cout << "detection w X h = " << AIObjectVec[0].Width << " X " << AIObjectVec[0].Height << "\n";
 			
-			if (0) // DDEBUG BEEP ON MOTION DETECTION
+			int beepTime = 0; // DDEBUG 
+			if (beepTime  > 0) // DDEBUG BEEP ON MOTION DETECTION
 				for (auto obj : AIObjectVec)
 					//if (obj.DetectionPercentage > 0) { // MOTION 
-					if (true) {
-						Beep(900, 50);
+					{
+						Beep(900, 250);
 						/*
 						Templkate matching test
 						cv::Rect bbox = cv::Rect(obj.X, obj.Y, obj.Width, obj.Height);
@@ -680,7 +720,6 @@ int main_SHOVAL(int argc, char* argv[])
 						break;
 						//cv::waitKey(-1);
 					}
-			int debug = 10;
 		}
 
 
@@ -708,11 +747,20 @@ int main_SHOVAL(int argc, char* argv[])
 		cap >> frame;
 		frameNum++;
 
+		frame = debugResize(frame);
+		/*
 		if (!debug_resizeImg.empty()) { // DDEBUG RESIZE
 			cv::Mat _frame;
 			cv::resize(frame, _frame, debug_resizeImg);
 			frame = _frame;
 		}
+		if (debug_resizeImgScale[0] > 0) { // DDEBUG RESIZE
+			cv::Mat _frame;
+			cv::resize(frame, _frame, cv::Size(0, 0), debug_resizeImgScale[0], debug_resizeImgScale[1]);
+			frame = _frame;
+		}
+		*/
+
 
 
 
@@ -726,8 +774,9 @@ int main_SHOVAL(int argc, char* argv[])
 			
 		}
 
-		if (0) // endless loop : 
+		if (1) // endless loop : 
 		if (frame.empty()) {
+			Beep(1400, 1000);
 			cap.set(cv::CAP_PROP_POS_FRAMES, 0); // start again from the beginning
 			cap >> frame;
 		}

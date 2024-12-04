@@ -100,19 +100,42 @@ void CBGSubstruct::init(int History, double varThreshold, bool detectShadows, in
         m_pBackSub = cv::cuda::createBackgroundSubtractorMOG2(History, varThreshold, detectShadows);
 #else
     m_pBackSub = createBackgroundSubtractorMOG2(History, varThreshold, detectShadows); // createBackgroundSubtractorKNN();
-
 #endif 
 	m_emphasize = emphasize;
 
 }
 
-cv::Mat  CBGSubstruct::process(cv::Mat frame)
+cv::Mat  CBGSubstruct::optimizeImage(cv::Mat frame)
+{
+    cv::Mat optFrame;
+    if (frame.size().width > m_optimizedWidth) {
+        float scale = m_optimizedWidth / frame.size().width;
+        cv::resize(frame, optFrame, cv::Size(0, 0), scale, scale);
+    }
+    else
+        optFrame = frame;
+
+    return frame;
+}
+
+cv::Mat  CBGSubstruct::process(cv::Mat &frame_)
 {
 
-    Mat fgMask;
+    Mat fgMask, frame; // frame = scaled frame
 
-    if (frame.empty())
+    if (frame_.empty())
         return cv::Mat();
+
+    frame = optimizeImage(frame_);
+
+    /*
+    if (frame_.size().width > 600) {
+        float scale = 600. / frame_.size().width;
+        cv::resize(frame_, frame, cv::Size(0,0), scale, scale);
+    }
+	else
+		frame = frame_;
+    */
 
     m_frameNum = (m_frameNum+1) % 99999;
 

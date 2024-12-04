@@ -79,6 +79,11 @@
 #endif
 #pragma comment(lib, "Version.lib")
 
+
+
+
+#define NO_MOTION_DETECTED       (m_params.motionDetectionType > 0 && m_BGSEGoutput.empty())
+
 namespace  ALGO_DETECTOPN_CONSTS {
 	const int MIN_CONT_AREA = 20 * 10;
 	const int MAX_CONT_AREA = 1000 * 1000;
@@ -112,6 +117,8 @@ bool showBGMask(cv::Mat  bgMask)
 {
 	cv::Mat display;
 
+	if (bgMask.empty())
+		return false;
 
 	if (bgMask.size().width > 600)
 		cv::resize(bgMask, display, cv::Size(0, 0), 0.5, 0.5);
@@ -333,9 +340,11 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		cv::Mat frame = frame_;
 
+		//--------------------------------------------------------------------------------------------------------------------------
 		// BG seg detection
-		//--------------------
-#if 1
+		// Currently , motion used only for checkIfStatic() function (filter stataic objects if motion detected within its BBOX)
+		//--------------------------------------------------------------------------------------------------------------------------
+
 		m_bgMask.setTo(0);
 		m_BGSEGoutput.clear();
 		if (timeForMotion()) {
@@ -354,26 +363,16 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 						m_BGSEGoutputLarge.push_back(obj);
 				}
 
-				if (!m_BGSEGoutput.empty()) {
-					m_bgSegHistory++;
-					std::cout << ">>> Motion detected : " << m_BGSEGoutput.size() << " objects, " << bgMaskNoZeroes << " pixels \n"; // DDEBUG PRINT 
-					//Beep(1200, 20);
-				}
-				//else m_bgSegHistory--;
-
 				m_lastFrameNum_motion = m_frameNum;
 
 			}
 		}
-		
-#endif 
 
+		//--------------------
 		// YOLO detection
 		//--------------------
 		m_Yolotput.clear();
-		//if (timeForDetection()) {
-		//if (timeForDetection() && !m_BGSEGoutput.empty()) { // ddebug test - dont YOLO if no motion detected
-		if (timeForDetection() && (m_params.motionDetectionType == 0 || !m_motionOnly || !m_BGSEGoutput.empty())) { // ddebug test 
+		if (timeForDetection()) { 
 			if (YOLO_MNGR) {
 				auto yolo2 = ST_yoloDetectors::getInstance();
 				if (yolo2 == nullptr) {
@@ -391,6 +390,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		}
 
+		//-------------------
 		// Track:
 		//-------------------
 		if (m_params.trackerType > -1) {
@@ -408,11 +408,12 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 
 		int mode = timeForDetection() ? 1 : 0;
+
 		/*-------------------------------------------
 		 * Deciphering YOLO &  tracker objects , 
 		 * Build the final detectedObject list 
 		 --------------------------------------------*/
-		m_decipher.track(mode, m_BGSEGoutput);
+		m_decipher.consolidate(mode, m_BGSEGoutput);
 
 		if (m_params.trackerType > -1) {
 			// Tracker postprocess:
@@ -453,13 +454,16 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		if (1) // DDEBUG SHOW BG_MASK 
 		{
-			if (m_bgMask.empty()) {
-				cv::Mat emptyMask = cv::Mat(m_frame.size(),CV_8U, cv::Scalar(0));
-				emptyMask  = m_bgSeg.optimizeImage(emptyMask);
-				showBGMask(emptyMask);
+			if (m_params.debugLevel > 1 && !m_bgMask.empty()) {
+				cv::Mat display;
+				if (m_bgMask.size().width > 600)
+					cv::resize(m_bgMask, display, cv::Size(0, 0), 0.5, 0.5);
+				else
+					display = m_bgMask;
+
+				cv::imshow("m_bgMask", display);
+				cv::waitKey(1);
 			}
-			else 
-				showBGMask(m_bgMask);
 		}
 
 		int tracked_count=0;
@@ -515,11 +519,12 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 			// Note: limit the number of objects to const MAX_OBJECTS!
 			for (int k = 0; k < detectedObjs.size() && k < MAX_OBJECTS; k++)
 				cObject_2_pObject(detectedObjs[k], &pObjects[k]);
-		}
 
-		if (0) // DDEBUG SAVE DETECTION  IMAGE 
-			debugSaveDetectionsImages(detectedObjs);
-		//--------------------------------------------
+			if (1) // DDEBUG SAVE DETECTION  IMAGE 
+				if (detectedObjs.size() > 0)
+ 					debugSaveDetectionsImages(detectedObjs);
+
+		}
 
 		if (0) // When Server will properly send the frameNum \ timestemp
 			m_frameNum = frameNum;
@@ -575,8 +580,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 	// Check motion only for motionOnly detection 
 	bool CDetector::timeForMotion()
 	{
-		return (m_params.motionDetectionType); // DDEBUG TEST 
-		//return (m_params.motionDetectionType > 0 && m_motionOnly && (m_frameNum - m_lastFrameNum_motion) >= m_params.stepMotionFrames);
+		return (m_params.motionDetectionType > 0 && m_motionOnly && (m_frameNum - m_lastFrameNum_motion) >= m_params.stepMotionFrames);
 	}
 
 	/*-------------------------------------------------------------------------
@@ -591,6 +595,10 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 	{
 		if (m_params.MLType <= 0)
 			return false;
+
+		if (m_motionOnly && NO_MOTION_DETECTED)  // No motion detected while in motionOnly mode - dont YOLO
+			return false;
+
 
 		if ((m_frameNum - m_lastFrameNum_detection) >= m_params.stepDetectionFrames) 
 			return true;

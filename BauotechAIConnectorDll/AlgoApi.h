@@ -118,7 +118,7 @@ extern "C" {
 	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
 
 
-	API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer);
+	API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer , int debugLevel=0);
 	API_EXPORT void BauotechAlgoConnector_Release();
 	API_EXPORT void BauotechAlgoConnector_Remove(int videoindex);
 

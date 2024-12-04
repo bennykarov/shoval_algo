@@ -74,6 +74,7 @@
 
         memcpy(m_buffers[pushPtr].ptr, frame.ptr, bufferSize());
         m_buffers[pushPtr].frameNum = frame.frameNum;
+        m_buffers[pushPtr].ts = frame.ts;
 
 
         // Starter to popPtr

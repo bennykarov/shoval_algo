@@ -280,7 +280,13 @@ float relativeDist(cv::Rect box1, cv::Rect box2);
 
 
  // RECT utilities 
- bool isIn(cv::Point hitPixel, cv::Rect2f  roi);
+ template <class T>
+ inline bool isIn(cv::Point hitPixel, T  roi)
+ {
+	 return (hitPixel.x > (int)roi.x && hitPixel.x < (int)roi.br().x &&
+		 hitPixel.y >(int)roi.y && hitPixel.y < (int)roi.br().y);
+ }
+
  cv::Rect2f extendBBox(cv::Rect2f rect_, cv::Point2f p);
  
  

@@ -219,7 +219,7 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
         result.confidence = confidences[idx];
         result.box = boxes[idx];
         output.push_back(result);
-        //if (result.class_id == 0)   std::cout << "DDEBUG DDEBUG : Person x = " << result.box.br() << "detected with confidence " << result.confidence << "\n";
+        if (result.class_id == 0)   std::cout << "DDEBUG DDEBUG : Person x = " << result.box.br() << "detected with confidence " << result.confidence << "\n";
     }
 }
 

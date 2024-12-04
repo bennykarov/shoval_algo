@@ -96,7 +96,7 @@ API_EXPORT void AlgoSetTime(int hour, int min, int sec)
 
 }
  
-API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer)
+API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer, int debugLevel)
 {
 
 	if (m_initialize) // DDEBUG avoid duplicate call !!!! 
@@ -105,14 +105,9 @@ API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer)
 	InitializeCriticalSection(&gCriticalSection);
 
 		
-	int debugLevel = 1;
-	if (debugLevel > 0) {
-		//LOGGER::init(FILES::OUTPUT_FOLDER_NAME, DLEVEL::INFO2);
-		LOGGER::init(FILES::OUTPUT_FOLDER_NAME, DLEVEL::DEBUG_HIGH);
-		std::string dllFilePath = "C:\\Program Files\\Bauotech\\dll\\algo\\BauotechAlgoConnector.dll";
-		LOGGER::log(DLEVEL::DEBUG_HIGH, "BauotechAlgoConnector DLL version = " + GetDllVersion(dllFilePath));
-		
-	}
+	LOGGER::init(FILES::OUTPUT_FOLDER_NAME, debugLevel);
+	LOGGER::log(DLEVEL::ERROR1, "BauotechAlgoConnector DLL version = " + VERSION_NUM);
+
 	LOGGER::log(DLEVEL::INFO1, "BauotechAlgoConnector_Init()");
 
 	uint32_t batchSize; // Eli changes - right now the 'batchSize' init inside g_loadBalancer.init() from config 
@@ -209,7 +204,7 @@ API_EXPORT int BauotechAlgoConnector_AddPolygon(uint32_t videoIndex,
 	int polygonSize,
 	int motionType)
 {
-	std::string logMSG = "API..._AddPolygon() cam=" + std::to_string(videoIndex) + "polygonPoints = " + std::to_string(polygonSize);
+	std::string logMSG = "API..._AddPolygon() polygonPoints = " + std::to_string(polygonSize) + " cam = " + std::to_string(videoIndex);
 	LOGGER::log(DLEVEL::INFO2, logMSG.c_str());
 
 	g_algoProcess[videoIndex].addPolygon(CamID, polygonId, DetectionType, motionType, MaxAllowed, Polygon, polygonSize);

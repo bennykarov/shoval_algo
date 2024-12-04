@@ -11,10 +11,11 @@
 class CframeBuffer {
 public:
     CframeBuffer() {}
-    CframeBuffer(int _frameNum, char* _ptr) { frameNum = _frameNum; ptr = _ptr; }
+    CframeBuffer(int _frameNum, int64_t _ts, char* _ptr) { ts = _ts; frameNum = _frameNum; ptr = _ptr; }
 
     char *ptr = nullptr;
     int frameNum = -1;
+    int64_t ts = -1;
 
     void free() {
         if (ptr != nullptr) {

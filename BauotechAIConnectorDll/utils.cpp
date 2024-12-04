@@ -129,14 +129,6 @@ std::string toUpper(std::string str)
   }
 
 
-  bool isIn(cv::Point hitPixel, cv::Rect  roi)
-  {
-	  return (hitPixel.x > roi.x   && hitPixel.x < roi.br().x &&
-		  hitPixel.y > roi.y   && hitPixel.y < roi.br().y);
-  }
-
-
-
   //===========================================================================================
   //   G E O    U T I L S
   //===========================================================================================
@@ -651,7 +643,8 @@ std::string toUpper(std::string str)
 
 	  return (float)area1 / (float)area2;
   }
-  // Ratio of overlapping of r1 (order sensative) 
+
+  // Ratio of overlapping in r1 (order sensative) 
   float bboxesBounding(cv::Rect2f r1, cv::Rect2f r2)
   {
 	  cv::Rect2f overlappedBox = r1 & r2;
@@ -707,7 +700,6 @@ std::string toUpper(std::string str)
 
 	  return box;
   }
-
 
   double interpolate(vector<double> &xData, vector<double> &yData, double x, bool extrapolate)
   {
@@ -980,20 +972,23 @@ std::string toUpper(std::string str)
 	  if (srcBox.height < dstDim.height)
 		  retBox.height = dstDim.height;
 
-	  retBox.x -= int(float(retBox.width - srcBox.width) / 2.);
-	  retBox.y -= int(float(retBox.height - srcBox.height) / 2.);
+	  cv::Point center;
+	  center = centerOf(srcBox);
+	  retBox.x = center.x - int((float)dstDim.width / 2.);
+	  retBox.y = center.y - int((float)dstDim.height / 2.);
 
 	  if (!frameDim.empty()) {
-		  if (retBox.br().x + retBox.width > frameDim.width)
-			  retBox.width = frameDim.width - retBox.br().x - 1;  // Shift X back
-		  if (retBox.br().y + retBox.height > frameDim.height)
-			  retBox.height = frameDim.height - retBox.br().y - 1;  // Shift X back
+		  if ((retBox.x + retBox.width) > frameDim.width)
+			  retBox.x = frameDim.width - retBox.width - 1;  // Shift X back
+		  if ((retBox.y + retBox.height) > frameDim.height)
+			  retBox.y = frameDim.height - retBox.height - 1;  // Shift X back
 	  }
 
-	  retBox.x = max(0, retBox.br().x);
-	  retBox.y = max(0, retBox.br().y);
-
-
+	  if (0)
+	  {
+		  retBox.x = max(0, retBox.br().x);
+		  retBox.y = max(0, retBox.br().y);
+	  }
 	  // Missing Check shift back - DDEBUG 
 
 	  return retBox;

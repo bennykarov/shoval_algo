@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <vector>
 #include <numeric>
+#include<ranges>
 
 #include "opencv2/opencv.hpp"
 
@@ -29,7 +30,7 @@ void CDecipher::init(int camID, cv::Size imgDim, int debugLevel) {
 	m_debugLevel = debugLevel; 	
 	m_active = true; 
 
-	m_predictor.init();
+	//m_predictor.init();
 
 	readFalseList();
 }
@@ -37,30 +38,6 @@ void CDecipher::init(int camID, cv::Size imgDim, int debugLevel) {
 /*--------------------------------------------------------------------------
 // UTILITIES :
 --------------------------------------------------------------------------*/
-
-/*
-----------------------------------------------------------
-Dynamic threshold for YOLO confidence 
-Diff between person-other , motion-static objects:
-----------------------------------------------------------
-*/
-float GET_MIN_YOLO_CONFIDENCE(Labels label, bool  isMoving)
-{
-	float conf = 0;
-	switch (label)
-	{
-	case Labels::person:
-		if (1)
-			conf = isMoving ? 0.2 : 0.4;
-		else
-			conf = isMoving ? 0.2 : 0.5;
-		break;
-	default:
-		conf = isMoving ? 0.4 : 0.5;
-	}
-
-	return conf;
-}
 
 /*----------------------------------------------------
 * Set yolo min conf according to:
@@ -193,9 +170,9 @@ int  CDecipher::addTrackerObjects(std::vector <CObject> trackerObjects, std::vec
 	for (auto obj : trackerObjects) {
 		CObject newObj = obj;
 
-		//int ind = bestMatch(obj.m_bbox, matchInds); // 'frameNum' -> ignore objects currently detected  by YOLO 
 		int ind = bestMatch(obj, matchInds); // 'frameNum' -> ignore objects currently detected  by YOLO 
 		if (ind >= 0 && m_objects[ind].back().m_frameNum < frameNum) {
+#if 0
 			bool mergeBox = false;
 			if (mergeBox)
 			{
@@ -212,6 +189,7 @@ int  CDecipher::addTrackerObjects(std::vector <CObject> trackerObjects, std::vec
 				// -2- Merge (0.5/0.5) with prev detected box:
 				newObj.m_bbox = UTILS::mergeBBoxes(yoloMergedBox, m_objects[ind].back().m_bbox, 0.5);
 			}
+#endif 
 
 			newObj.m_ID = m_objects[ind].back().m_ID;
 
@@ -285,6 +263,7 @@ std::vector <int>   CDecipher::add(std::vector <CObject>& trackerObjects, std::v
 		else {
 			// A New object:
 			newObj.m_ID = m_UniqueID++;
+
 			m_objects.push_back(std::vector <CObject>());
 			m_objects.back().push_back(newObj);
 		}
@@ -386,9 +365,10 @@ int CDecipher::bestMatch(CObject srcObj, std::vector <int> ignoreInds, int frame
 	std::vector <int>  bestInds;
 	std::vector <float>  bestScores;
 
-	//cv::Rect testArea = makeABox(cv::Point(650, 85), 100, 100);
+#if 0
+	// DDEBUG DDEBUG
 	cv::Rect targetBox = cv::Rect(708, 52, 53, 33);
-	cv::Rect testArea = enlargeBbox(targetBox, cv::Size(targetBox.width*2, targetBox.height * 2));
+	cv::Rect testArea = enlargeBbox(targetBox, cv::Size(targetBox.width * 2, targetBox.height * 2));
 	if (1) // DDEBUG DDEBUG 
 	{
 		float overlap = OverlappingRatio_subjective(srcObj.m_bbox, testArea);
@@ -396,26 +376,8 @@ int CDecipher::bestMatch(CObject srcObj, std::vector <int> ignoreInds, int frame
 			int debug= 10; // most new box overlapped old box
 	}
 
-
-#if 0
-	std::vector <int> staticINDs, movingINDs, staticFirstINDs;
-
-	// Check first Statics matching 
+#endif
 	for (int i = 0; i < m_objects.size(); i++) {
-		if (isStableStaticObj(m_objects[i].back()))
-			staticINDs.push_back(i);
-		else
-			movingINDs.push_back(i);
-	}
-
-	staticFirstINDs = staticINDs;
-	staticFirstINDs.insert(staticFirstINDs.end(), movingINDs.begin(), movingINDs.end());
-
-	// When match indices, give statics priority - avoid static obj match to a new moving list 
-	for (int i : staticFirstINDs) {
-#else
-	for (int i = 0; i < m_objects.size(); i++) {
-#endif 
 		auto obj = m_objects[i].back();
 
 		// Skip conditions:
@@ -426,18 +388,16 @@ int CDecipher::bestMatch(CObject srcObj, std::vector <int> ignoreInds, int frame
 		if (obj.m_frameNum == frameNumToIgnore)
 			continue;
 
-		// Diff params for Static and Moving objects:
 		bool Matching = false;
-
 		float overlappedRatio;
-		bool stableStatic = isStableStaticObj(obj);
 
+		bool stableStatic = isStableStaticObj(obj);
 
 		if (stableStatic) {
 			// Check match for STATIC object 
 			//overlappedRatio = bboxesBounding(obj.m_bbox, srcObj.m_bbox); // most new box area should overlappe old box
 			overlappedRatio = OverlappingRatio(obj.m_bbox, srcObj.m_bbox); // most new box area should overlappe old box			
-			Matching = (overlappedRatio > GOOD_STATIC_OVERLAPED_AREA);
+			Matching = (overlappedRatio > SENIOR_GOOD_STATIC_OVERLAPED_AREA);
 		}
 		else {
 			// Check match for MOVING object 
@@ -445,13 +405,7 @@ int CDecipher::bestMatch(CObject srcObj, std::vector <int> ignoreInds, int frame
 			int durationFactor = min(5, m_frameNum - obj.m_frameNum);
 			int maxDistance = singleStepSize(obj.m_bbox.width, stableStatic) * durationFactor; // (m_frameNum - obj.m_frameNum);
 
-
 			//m_predictor.predict(obj, m_frameNum);
-			/*
-			pos = estimatePosition(obj);
-			match = distance(boxCenter(obj.m_bbox), boxCenter(srcObj.m_bbox)) < maxDistance2
-
-			*/
 
 			overlappedRatio = OverlappingRatio(obj.m_bbox, srcObj.m_bbox); // most new box overlapped old box
 			// Check (1) overlapping ratio (2) The sizes are similars (kind of) (3) the distance is reasonable 
@@ -459,10 +413,6 @@ int CDecipher::bestMatch(CObject srcObj, std::vector <int> ignoreInds, int frame
 		}
 
 		if (Matching) {
-
-			if (obj.m_ID == 9)
-				int debug = 10;
-
 			bestInds.push_back(i);
 			bestScores.push_back(overlappedRatio);
 		}
@@ -479,35 +429,51 @@ int CDecipher::bestMatch(CObject srcObj, std::vector <int> ignoreInds, int frame
 
 /*---------------------------------------------------------------
 	Update final (current) 'm_detectedObjects' from 'm_objects'
+	Update motion typew (m_moving) and age of the object
  ----------------------------------------------------------------*/
-int CDecipher::track(int mode, std::vector <cv::Rect>  BGSEGoutput)
+int CDecipher::consolidate(int mode, std::vector <cv::Rect>  BGSEGoutput)
 {
 	m_detectedObjects.clear(); // TEMP clearing
 	m_pruneObjIDs.clear();
 
 	for (auto& obj : m_objects) {
 
-		// Set m_moving  : positive  for moving (num of moving frames), -X for X frames of static length 
-		int staticLen = isStatic(obj, BGSEGoutput);
-		if (staticLen == 0)
-			obj.back().m_moving = std::count_if(obj.begin(), obj.end(), [](CObject &ob) { return ob.m_moving > 0; });
-		else
-			obj.back().m_moving = -staticLen; // Keep static len as NAGTIVE
+		//-----------------------------
+		// Set motion mode (m_moving): 
+		// positive  for moving (num of moving frames), -X for X frames of static length 
+		//-----------------------------
+
+
+		// Set new static len :
+		//-----------------------
+		if (obj.size() > 1) {
+
+			int prevInd = obj.size() - 2;
+			if (isStableStaticObj(obj[prevInd]))
+				// -1- Stable Static object:
+				obj.back().m_moving = obj[prevInd].m_moving - 1;
+			else {
+				int staticLen = checkIfStatic(obj, BGSEGoutput);
+				if (staticLen >= MIN_STATIC_FRAMES || (staticLen >= MIN_SHORT_STATIC_FRAMES && staticLen == obj.size()))
+					// -2- Junior Static object:
+					obj.back().m_moving = -staticLen; // Keep static len as NAGTIVE
+				else
+					// -3- Moving object:
+					obj.back().m_moving = std::count_if(obj.begin(), obj.end(), [](CObject& ob) { return ob.m_moving > 0; });
+			}
+		}
+
 
 		// Remove old object
 		if (getHiddenLen(obj.back()) > GET_KEEP_HIDDEN_FRAMES(obj)) {
 			// remove object later
 			m_pruneObjIDs.push_back(obj.back().m_ID);
-			if (obj.back().m_ID == 12)
-				int debug = 10;
 		}
 		else {
 			// Add object 
 			obj.back().m_age = obj.size(); // update age 
 			m_detectedObjects.push_back(obj.back());
 			m_detectedObjects.back().m_confidence = stableConfidence(obj); // calc mean confidence of the last few frames 
-
-			//m_detectedObjects.back().m_moving = obj.back().m_moving;
 		}
 	}
 
@@ -741,23 +707,64 @@ bool CDecipher::isMoving(std::vector <CObject> obj)
 	return false;
 }
 
+#if 0
+/*--------------------------------------------------------------------------------
+* Four mode of static : 
+* None (Move)
+* Stable (long static)
+* Regular 
+* Short but solid (=all elements) (short static)
+---------------------------------------------------------------------------------*/
+STATIC_MODE  CDecipher::staticMode(std::vector <CObject> obj, std::vector <cv::Rect>  BGSEGoutput)
+{
+	int staticLen = checkIfStatic(obj, BGSEGoutput); // should oprimized - should moved once  to process()
+
+	if (staticLen == 0)
+		return STATIC_MODE::Move;
+
+	if (staticLen >= MIN_STABLE_STATIC_FRAMES) // 15
+				return STATIC_MODE::Stable;
+	
+	if (staticLen >= MIN_STATIC_FRAMES) // 8
+		return STATIC_MODE::Normal;
+
+	if (staticLen == obj.size() && staticLen >= MIN_SHORT_STATIC_FRAMES) // Short (3)  but all appearmences are the same pos (static)
+		return STATIC_MODE::Normal;
+
+}
+
+/*--------------------------------------------------------------------------------
+* Check if last <len> objects are static
+ --------------------------------------------------------------------------------*/
+bool CDecipher::isLastStatic(std::vector <CObject> objs, int len)
+{
+	if (objs.size() < len)
+		return false;
+
+
+	std::vector <CObject> shortObj = std::vector <CObject>(objs.end() - len, objs.end());
+	if (checkIfStatic(shortObj) == len)
+			return true;
+	
+
+	return false;
+
+}
+#endif 
 /*----------------------------------------------------------------------
+* Check if object is stable static object
+* Check if CURRENT (last) bbox overlapped all others boexs in list
+* if lesss than MIN_OVERLAP_RATIO is overlapped - it is NOT static
 * Return : count of static frames ( 0 if moving)
 -----------------------------------------------------------------------*/
-int CDecipher::isStatic(std::vector <CObject> objs, std::vector <cv::Rect>  BGSEGoutput)
+int CDecipher::checkIfStatic(std::vector <CObject> objs, std::vector <cv::Rect>  BGSEGoutput)
 {
-
-
-	int fps_ = 30;
-	int INSPECTED_LEN = 20; // fps_ * 2; // in frames
-
+	const int INSPECTED_LEN = 20;
+	const float MIN_OVERLAP_RATIO = 0.65;
 	int staticCount= 0;
 
 
-	if (m_frameNum > 20 && objs.back().m_ID == 12)
-		int debug = 10;
-
-	if (objs.size() < 8)
+	if (objs.size() < 2)
 		return 0;
 
 	// If BGSeg found motion within this object - not a static object
@@ -783,13 +790,28 @@ int CDecipher::isStatic(std::vector <CObject> objs, std::vector <cv::Rect>  BGSE
 	}
 
 	float framesOverlapRatio = (float)(overlapCount + 1.) / (float)(actualInspectLen);
-	if (framesOverlapRatio > 0.65)
+	if (framesOverlapRatio > MIN_OVERLAP_RATIO)
 		staticCount = overlapCount + 1; // include the current object
 	else
 		staticCount = 0;
 
 	return staticCount;
 }
+
+
+
+/*------------------------------------------------------------------------------
+* Len to keep object hidden
+* 5 static frames is enough to keep this object for KEEP_STATIC_HIDDEN_FRAMES
+--------------------------------------------------------------------------------*/
+int CDecipher::GET_KEEP_HIDDEN_FRAMES(std::vector <CObject> obj)
+{
+	if (checkIfStatic(obj) < MIN_STATIC_FRAMES_TO_KEEP_LONGER)
+		return MIN(KEEP_MOVING_HIDDEN_FRAMES, obj.size());
+	else
+		return KEEP_STATIC_HIDDEN_FRAMES;
+}
+
 
 
 inline bool CDecipher::isLarge(std::vector <CObject> obj)
@@ -881,13 +903,21 @@ std::vector <CObject> CDecipher::getStableObjects(float scale, cv::Mat *frameImg
 		for (auto obj : detectionSinglePloy) {
 			if (!suspectedAsFalse(obj, Labels(alert.m_label), frameImg))
 				detectedObjects.push_back(obj);
-			else {
-				pruneObjects(obj.m_ID);
-			}
+			//else pruneObjects(obj.m_ID); // DDEBUG WRONG !
 		}
 
 		if (detectedObjects.size() > alert.m_maxAllowed)
 			m_alertObjects.insert(m_alertObjects.end(), detectedObjects.begin(), detectedObjects.end()); // gather all camera's alerts into one vector
+	}
+
+
+	// DDEBUG DDEBUG SAVE DETECTED IMAGE 
+	if (0)
+	if (detectedObjects.size() > 0 && isIn(cv::Point(175,220), detectedObjects[0].m_bbox)) {
+		cv::Mat debugImg = *frameImg;
+		cv::rectangle(debugImg, detectedObjects[0].m_bbox, cv::Scalar(0,0,255), 3);
+		std::string fname = "C:/temp/detected_" +  std::to_string(m_camID) +".jpg";
+		cv::imwrite(fname, debugImg);
 	}
 
 	return detectedObjects;
@@ -913,7 +943,6 @@ std::vector <CObject> CDecipher::removeOverlappedObjects(std::vector <CObject> d
 -----------------------------------------------------------------------------*/
 bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameImg)
 {
-	//if (alertLabel != Labels::person)  return false;
 
 	if (frameImg == nullptr)
 		return false;
@@ -934,18 +963,19 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 	// Dimension for person objects
 	if (obj.m_label == Labels::person) {
 		if (1) // DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG Allow small person objects
-			Small_Box_H = 10;
+			Small_Box_H = 15;
 		else
-			Small_Box_H = 21;
+			Small_Box_H = 30;
 
 			Small_Box_W = int((float)Small_Box_H / 3.);
 	}
 
 	// Remove small & young objects
 	if (obj.m_age < 5) 
-		if (obj.m_bbox.width < Small_Box_W || obj.m_bbox.height < Small_Box_H)
+		if (obj.m_bbox.width < Small_Box_W || obj.m_bbox.height < Small_Box_H) {
+			LOGGER::log(DLEVEL::ERROR2, "Detection suspected as FALSE (SIZE) , in frame = " + std::to_string(m_frameNum));
 			return true;
-
+		}
 	bool touchEdge = (obj.m_bbox.x == 0 || obj.m_bbox.y == 0 || obj.m_bbox.br().x == frameImg->size().width - 1 || obj.m_bbox.br().y == frameImg->size().height - 1);
 
 	// Ignore if  "touchEdge" and "lowCOntrast"
@@ -981,7 +1011,7 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 			bool lowCOntrast = (stddev.val[0] < MIN_STDDEV_FOR_BOX); // Low variation gray levels in box
 
 			if (lowCOntrast) {
-				LOGGER::log(DLEVEL::ERROR2, "Person detection suspected as FALSE , in frame = " + std::to_string(m_frameNum));
+				LOGGER::log(DLEVEL::ERROR2, "Detection suspected as FALSE (CONTRAST), in frame = " + std::to_string(m_frameNum));
 				return true;
 			}
 		}
@@ -995,6 +1025,10 @@ bool CDecipher::suspectedAsFalse(CObject obj, Labels alertLabel, cv::Mat* frameI
 bool isTemplateMatch(cv::Mat &img, cv::Mat templ, float thresh)
 {
 	cv::Mat result;
+
+	if (templ.empty())
+		return false;
+
 	cv::matchTemplate(img, templ, result, cv::TM_CCOEFF_NORMED); // TM_SQDIFF
 	double minVal; double maxVal; cv::Point minLoc; cv::Point maxLoc;
 	cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, cv::Mat());
@@ -1017,12 +1051,18 @@ bool CDecipher::isMatchFalseList(CObject obj, cv::Mat& frameImg)
 		// Check obj dimension vs template dimension
 		cv::Mat objImg;
 
+		objImg = frameImg(obj.m_bbox);
+
+		// Switch images due to size issues (template must be smaller than src image)
+		if (obj.m_bbox.width < templ.m_img.cols && obj.m_bbox.height < templ.m_img.rows)
+			if (isTemplateMatch(templ.m_img, objImg, thres))
+				return true;
+
+		// Enlarge detection box if neccessary 
 		if (obj.m_bbox.width < templ.m_img.cols || obj.m_bbox.height < templ.m_img.rows) {
 			cv::Rect largerBbox = enlargeBbox(obj.m_bbox, templ.m_img.size(), frameImg.size());
 			objImg = frameImg(largerBbox);
 		}
-		else
-			objImg = frameImg(obj.m_bbox);
 
 		if (isTemplateMatch(objImg, templ.m_img, thres))
 			return true;

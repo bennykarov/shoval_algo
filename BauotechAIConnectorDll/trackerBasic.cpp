@@ -14,9 +14,10 @@
 
 #include "config.hpp"
 #include "utils.hpp"
-#include "config.hpp"
 #include "trackerBasic.hpp"
 
+
+//#define TRACKER_NO_LEGACY 
 
 using namespace cv;
 using namespace std;
@@ -58,8 +59,6 @@ bool CMTracker::init(int type, int debugLevel, int badFramesToReset)
 
     std::cout << "Tracker type = " << m_trackerTypes_str[m_trackerType] << "\n";
 
-    //m_tracker = createTrackerByName(m_trackerTypes_str[m_trackerType]);
-    //cv::Ptr<cv::legacy::Tracker> m_trackerLegacy = createTrackerByName_legacy(const std::string& name)
     return true;
 
 }
@@ -73,9 +72,6 @@ void CMTracker::clear()
     m_bboxs.clear();
     m_objID.clear();
     m_labels.clear();
-
-    if (1) 
-        m_multiTracker.clear();
 
 
 
@@ -114,38 +110,40 @@ void CMTracker::setROIs(std::vector <cv::Rect> bboxes, std::vector <int> objID, 
 
     for (int i = 0; i < MIN(bboxes.size(), MAX_TRACKERS_ALLOWED); i++) {
         m_bboxs.push_back(bboxes[i]);
+#ifndef TRACKER_NO_LEGACY
         m_algorithms.push_back(createTrackerByName_legacy(m_trackerTypes_str[m_trackerType]));
+#else 
+        m_algorithms.push_back(createTrackerByName(m_trackerTypes_str[m_trackerType]));
+#endif 
         m_objID.push_back(objID[i]);
         m_labels.push_back(labels[i]);
 
-        m_multiTracker.add(m_algorithms.back(), frame, Rect2d(bboxes[i]));
+        if (m_trackerType == 8)
+            m_algorithms.back()->init(frame, bboxes[i]);
+        else 
+            m_algorithms.back()->init(frame, Rect2d(bboxes[i]));
+        //m_multiTracker.add(m_algorithms.back(), frame, Rect2d(bboxes[i]));
     }
 }
 
 
-int CMTracker::track(cv::Mat frame, std::vector<cv::Rect>& trackerOutput)
-{
-    //for (auto trk : m_algorithms)
-    for (int i = 0; i < m_algorithms.size(); i++) {
-        bool ok = m_algorithms[i]->update(frame, m_bboxs[i]);
-        if (ok) {
-            UTILS::checkBounderies(m_bboxs[i], frame.size());
-            trackerOutput.push_back(m_bboxs[i]);
-        }
-    }
 
-    return trackerOutput.size();
-}
 
 int CMTracker::track(cv::Mat frame, std::vector<CObject>& trackerOutput, int frameNum)
 {
     //for (auto trk : m_algorithms)
     for (int i = 0; i < m_algorithms.size(); i++) {
+#ifndef TRACKER_NO_LEGACY
         bool ok = m_algorithms[i]->update(frame, m_bboxs[i]);
+#else 
+        cv::Rect bbox = cv::Rect(m_bboxs[i].x, m_bboxs[i].y, m_bboxs[i].width, m_bboxs[i].height);
+        bool ok = m_algorithms[i]->update(frame, bbox);
+#endif 
+
         if (ok) {
             UTILS::checkBounderies(m_bboxs[i], frame.size());
             int label = m_labels[i]; // DDEBUG 
-            CObject trackObj(m_bboxs[i], frameNum, 0, DETECT_TYPE::Tracking, m_labels[i]);  // 	DDEBUG giraffe 
+            CObject trackObj(m_bboxs[i], frameNum, 0, DETECT_TYPE::Tracking, m_labels[i]);  
 
             trackerOutput.push_back(trackObj);
         }
@@ -154,20 +152,7 @@ int CMTracker::track(cv::Mat frame, std::vector<CObject>& trackerOutput, int fra
     return trackerOutput.size();
 }
 
-
-int CMTracker::track_(cv::Mat frame, std::vector<cv::Rect>& trackerOutput)
-{
-    m_multiTracker.update(frame);
-    for (auto& roi_ : m_multiTracker.getObjects()) {
-        cv::Rect roi = cv::Rect(roi_);
-        UTILS::checkBounderies(roi, frame.size());
-
-        trackerOutput.push_back(roi);
-    }
-
-    return trackerOutput.size();
-}
-
+#if 1
 //========================================================================
 //  S I N G L E     T R A C K E R    C L A S S 
 //========================================================================
@@ -224,6 +209,7 @@ bool CTracker::track(cv::Mat frame)
 		putText(display, trackerType + " Tracker", Point(100,20), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(50,170,50),2);
 		cv::putText(display, std::to_string(m_frameNum), Point(100,50), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(50,170,50), 2);
 
+
 		imshow("Tracking", display);
 	}
 
@@ -275,7 +261,6 @@ cv::Rect CTracker::setROI_GUI(cv::Mat frame)
 }
 
 
-#if 1
 int CTracker::track_main(std::string videoFName, int trackerTypeInd, int skip)
 {
     // List of tracker types in OpenCV 3.2
@@ -305,7 +290,7 @@ int CTracker::track_main(std::string videoFName, int trackerTypeInd, int skip)
 
 	Rect bbox;
 
-#if 1
+
     // Run idle for  selection
     while (video.read(frame)) {
         imshow("Idle", frame);
@@ -330,16 +315,24 @@ int CTracker::track_main(std::string videoFName, int trackerTypeInd, int skip)
 
     tracker->init(frame, bbox);
 
-#endif 
+    int minX = 999999;
+    int maxX = 0;
+    int minY = 999999;
+    int maxY = 0;
+
+
 
     int frameNum = 0;
 	bool ok =	false;
     while(video.read(frame))
     {
+
      
         // Start timer
         //double timer = (double)getTickCount();
         frameNum++;
+        if (frameNum % 2 == 0)   // DDEBUG 
+            continue;
         // Update the tracking result
 		if (!bbox.empty())
 			ok = tracker->update(frame, bbox);
@@ -356,7 +349,18 @@ int CTracker::track_main(std::string videoFName, int trackerTypeInd, int skip)
         
         // Display FPS on frame
         //putText(frame, "FPS : " + SSTR(int(fps)), Point(100,50), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(50,170,50), 2);
-        cv::putText(frame, std::to_string(frameNum), Point(100,50), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(50,170,50), 2);
+        cv::putText(frame, std::to_string(frameNum), Point(100, 50), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(50, 170, 50), 2);
+        cv::Point center = cv::Point(bbox.tl().x + bbox.br().x / 2, bbox.tl().y + bbox.br().y / 2);
+        std::string text = "( " + std::to_string(center.x) + " , " + std::to_string(center.y) + " )";
+        cv::putText(frame, text, Point(100, 100), FONT_HERSHEY_SIMPLEX, 0.75, Scalar(50, 170, 50), 2);
+
+        minX = min(minX, center.x);
+        maxX = max(maxX, center.x);
+        minY = min(minY, center.y);
+        maxY = max(maxY, center.y);
+
+        int diffX = maxX - minX;
+        int diffY = maxY - minY;
 
         // Display frame.
         imshow("Tracking", frame);
@@ -379,7 +383,7 @@ int CTracker::track_main(std::string videoFName, int trackerTypeInd, int skip)
     return 0;
 
 }
-#endif
+
 
 
 
@@ -400,3 +404,4 @@ bool CTracker::init()
 
 	return true;
 }
+#endif

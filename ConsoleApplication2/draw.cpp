@@ -98,7 +98,7 @@ int CDISPLAY::draw(int height, int width, char *pData, std::vector <ALGO_DETECTI
 			}
 			else
 				cv::rectangle(frameAfter, cv::Rect(obj.X, obj.Y, obj.Width, obj.Height), g_colors[colorInd], thickness);
-			bool draw_confidence = false; // confidence OR objID
+			bool draw_confidence = true; // confidence OR objID
 			if (draw_confidence)
 			{	// draw Object confidence (ubless its trick for Static obj 9999...)
 				//cv::putText(frameAfter, std::format("{:.2f}", obj.DetectionPercentage), cv::Point(obj.X, obj.Y - 5), cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(255, 0, 255));
