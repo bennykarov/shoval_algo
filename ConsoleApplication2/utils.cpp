@@ -3,6 +3,8 @@
 #include <map>
 #include <thread>
 #include <shared_mutex>  // C++17
+#include <filesystem>
+
 
 
 #include "opencv2/opencv.hpp"
@@ -58,4 +60,46 @@ std::vector<cv::Point> UTILS_CONSOLE2::roiToPolygon(cv::Rect roi)
 
 	return polygon;
 
+}
+
+
+int readFalseList(std::string folderName, std::vector <cv::Mat>& r_imgs, std::vector <int>& r_camIDs, std::vector <int>& r_labels)
+{
+	const std::filesystem::path FalseFolder{ folderName };
+	/*
+	const std::filesystem::path FalseFolder{R"(C:\Program Files\Bauotech\dll\algo\data\)"};
+
+	if (!UTILS::isFolderExist(R"(C:\Program Files\Bauotech\dll\algo\data\)"))
+		return 0;
+	*/
+
+	for (auto const& dir_entry : std::filesystem::directory_iterator{ FalseFolder }) {
+		int camID = -1;
+		std::string sPath = dir_entry.path().generic_string(); // convert to string 
+		// get cam ID:
+		//----------------------------------------------------------------
+		std::string sFName = dir_entry.path().filename().generic_string();
+		std::string sExt = dir_entry.path().extension().generic_string();
+
+		auto ptr = sFName.find("camid_");
+		if (ptr != std::string::npos) {
+			auto dot = sFName.find(".");
+
+			int IDStrLen = dot - ptr - 6;
+			std::string sCamid = sFName.substr(ptr + 6, IDStrLen);
+			camID = atoi(sCamid.c_str());
+		}
+		//----------------------------------------------------------------
+
+		// Add false-image to the list
+		//if (camID == r_camID) {
+		cv::Mat falseImg = cv::imread(sPath);
+		int alertLabel = 0; // DDEBUG DDEBUG DDEBUG CONST 
+		r_imgs.push_back(falseImg);
+		r_camIDs.push_back(camID);
+		r_labels.push_back(alertLabel);
+		// }
+	}
+
+	return r_imgs.size();
 }

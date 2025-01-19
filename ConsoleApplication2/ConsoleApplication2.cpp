@@ -54,18 +54,22 @@
 
 
 std::string CAMERAFNAME = "";
-//std::string CAMERAFNAME = R"(C:\Program Files\Bauotech\AI\Harchava_PTZ.json)";
+
+// sync cam list from callback and App cam list:
+std::mutex     gCamRequestMtx;
 
 
-//static std::mutex     gCamRequestMtx;
 HANDLE g_hConsole;
 //int g_motionType = MotionType::OnlyMoving;
 int g_motionType = MotionType::MotionOrNot;
 //int g_skip = 0;
-float g_rotateImageAngle = 10.; // DDEBUG roate original image!
+
+float	tune_rotateImageAngle = 0.; // DDEBUG roate original image!
+float  tune_warpingScale = 0; // 0.8 = 10% for each side of uppoer side	
+
 
 int main_siamRPN(int argc, char** argv);
-int main_yoloTest(float confidence);
+//int main_yoloTest(float confidence);
 //int main_yolo_opencv_sample(int argc, char** argv);
 //void MAIN_drawEdges(std::string videoName);
 
@@ -79,6 +83,7 @@ cv::Vec2f debug_resizeImgScale(0, 0);
 int main_drawPoly(int argc, char* argv[]);
 std::vector <CAlert> g_cameraInfos;
 //std::vector <std::string> g_cameraInfosLabelStr; // duplicate te original label string for multiple labels tests
+std::vector <int> gVideosToRunCallBack; // buffer to prevent read\write issues of 2 threads (main & callback)
 std::vector <int> gVideosToRun; // cams batch 
 
 
@@ -288,6 +293,7 @@ int addPolygonsAuto(std::string cameraFName, cv::Mat frame, int cameraNum, int d
 		else
 			_label = templateCamInf.m_label;
 
+		int timeLimit = 0; //  -9;
 		BauotechAlgoConnector_AddPolygon(_videoIndex,
 			_videoIndex, //CamID,
 			polygonId++,
@@ -296,7 +302,7 @@ int addPolygonsAuto(std::string cameraFName, cv::Mat frame, int cameraNum, int d
 			templateCamInf.m_maxAllowed, // MaxAllowed,
 			&(polygonVec[0]),//Polygon,
 			templateCamInf.m_polyPoints.size() * 2,
-			g_motionType); 
+			g_motionType); // ,timeLimit); 
 	}
 
 	return g_cameraInfos.size();
@@ -334,7 +340,7 @@ int addPolygonsFromCameraJson(std::string cameraFName,cv::Mat frame)
 			camInf.m_maxAllowed, // MaxAllowed,
 			&(polygonVec[0]),//Polygon,
 			camInf.m_polyPoints.size() * 2, 
-			camInf.m_motionType); // polygonSize);
+			camInf.m_motionType); 
 	}
 
 	return g_cameraInfos.size();
@@ -347,17 +353,29 @@ int addPolygonsFromCameraJson(std::string cameraFName,cv::Mat frame)
 //__cdecl*
 /*-----------------------------------------------------------------------------------------
 Callback for Video Server - provide list of camera IDs to be sent
+COnsole fill list of cameras to be run
 -----------------------------------------------------------------------------------------*/
 
-void consoleCameraRequestCallback(const uint32_t *camera, int size)
+void consoleAppCameraRequestCallback(const uint32_t *camera, int size)
 {
+	std::lock_guard<std::mutex> camlistGuard(gCamRequestMtx);
 
-	gVideosToRun.clear();
+	gVideosToRunCallBack.clear();
 
 	for (int i = 0; i < size; i++)
-		gVideosToRun.push_back(camera[i]);
+		gVideosToRunCallBack.push_back(camera[i]);
 
 }
+
+void updateVideoList()
+{
+	std::lock_guard<std::mutex> camlistGuard(gCamRequestMtx);
+
+	gVideosToRun.clear();
+	gVideosToRun.assign(gVideosToRunCallBack.begin(), gVideosToRunCallBack.end());
+}
+
+
 
 
 
@@ -368,11 +386,15 @@ cv::Mat tune_imgae(cv::Mat frame, float rotateAngle=0.)
 
 
 	cv::Mat _frame;
+	// size correction
+	//-------------------
 	if (0)
 	{
 		cv::resize(frame, _frame, cv::Size(640, 480));
 		frame = _frame;
 	}
+	// Rotation correction
+	//----------------------
 	if (rotateAngle != 0) {
 		cv::Point2f center((frame.cols - 1) / 2.0, (frame.rows - 1) / 2.0);
 		cv::Mat matRotation = cv::getRotationMatrix2D(center, rotateAngle, 1.0);
@@ -383,13 +405,24 @@ cv::Mat tune_imgae(cv::Mat frame, float rotateAngle=0.)
 
 
 
-	bool warpImg = true;
-	if (warpImg)
+	// Perspective corraction:
+	//-------------------------
+
+	if (tune_warpingScale > 0)
 	{
 		// perspective transform:
-		vector< cv::Point2f> roi_corners = { cv::Point2f(100.,0),cv::Point2f(251.,0) ,cv::Point2f(351.,287.) ,cv::Point2f(0,287.) };
+		int w = frame.size().width;
+		int h = frame.size().height;
+		/*
+		vector< cv::Point2f> roi_corners = {cv::Point2f(100.,0),cv::Point2f(251.,0) ,cv::Point2f(351.,287.) ,cv::Point2f(0,287.)};
 		vector< cv::Point2f> dst_corners = { cv::Point2f(0,0),cv::Point2f(351.,0) ,cv::Point2f(351.,287.) ,cv::Point2f(0,287.) };
+		*/
+		int uppoerShift = int((float)frame.size().width * tune_warpingScale / 2.);
+		int leftX = uppoerShift;
+		int rightX = frame.size().width - uppoerShift;
 
+		vector< cv::Point2f> roi_corners = { cv::Point2f((float)leftX,0),cv::Point2f(rightX,0) ,cv::Point2f(w - 1 ,h - 1) ,cv::Point2f(0 ,h - 1) };
+		vector< cv::Point2f> dst_corners = { cv::Point2f((float)0,0),cv::Point2f(w-1,0) ,cv::Point2f(w - 1 ,h - 1) ,cv::Point2f(0 ,h - 1) };
 		cv::Mat M = cv::getPerspectiveTransform(roi_corners, dst_corners);
 
 		cv::Size warped_image_size = cv::Size(cvRound(dst_corners[2].x), cvRound(dst_corners[2].y));
@@ -402,7 +435,6 @@ cv::Mat tune_imgae(cv::Mat frame, float rotateAngle=0.)
 		return _frame;
 
 
-
 }
 
 
@@ -410,7 +442,7 @@ int main_SHOVAL(int argc, char* argv[])
 {
 	CDISPLAY disp;
 
-	bool ASYNC = false;
+	bool ASYNC = true;
 	// DDEBUG flag
 	uint8_t invertImg = 0; //  readConfigFIle(ConfigFName) == 1;
 	int configSet = 0;
@@ -430,10 +462,7 @@ int main_SHOVAL(int argc, char* argv[])
 
 
 
-	if (0) {
-		main_yoloTest(0.4); // DDEBUG TEST YOLO
-		return 0;
-	}
+	// if (0) main_yoloTest(0.4); return 0; // DDEBUG TEST YOLO
 
 	int detectionLabel = -1;
 	if (readConfigFile("appConfig.ini", params)) {
@@ -476,14 +505,14 @@ int main_SHOVAL(int argc, char* argv[])
 
 	NumberOfVideos = MIN(NumberOfVideos, MAX_VIDEOS);
 	//videoTodisplayInd = min(videoTodisplayInd, NumberOfVideos - 1);
-	videoTodisplayInd = NumberOfVideos - 1; // show last camera in list
+	//videoTodisplayInd = NumberOfVideos - 1; // show last camera in list
 
 
 	
-	MessageBoxA(0, std::string("cams=" + std::to_string(NumberOfVideos) + " ; label=" + std::to_string(detectionLabel) + " ; motion=" + std::to_string(g_motionType) + "; start frame="+std::to_string(startSkipFrames)).c_str(), "Info", MB_OK);
+	MessageBoxA(0, std::string(std::string(ASYNC? "ASYNC ; " : "SYNC ; ") + "cams=" + std::to_string(NumberOfVideos) + " ; label=" + std::to_string(detectionLabel) + " ; motion=" + std::to_string(g_motionType) + "; start frame="+std::to_string(startSkipFrames)).c_str(), "Info", MB_OK);
 
 
-	int DrawDetections = 2; // full display
+	int DrawDetections = 2;//  2; // full display
 	if (argc > 3)
 		if (UTILS_CONSOLE2::toUpper(std::string(argv[3])) == "NODRAW")
 			DrawDetections = 0; // no display
@@ -511,7 +540,7 @@ int main_SHOVAL(int argc, char* argv[])
 		cv::resize(frame, _frame, cv::Size(0, 0), ScaleDown, ScaleDown);
 		frame = _frame;
 	}
-	//else frame = tune_imgae(frame, g_rotateImageAngle);  // DDEBUG DDEBUG     DDEBUG DDEBUG     DDEBUG DDEBUG     
+	else frame = tune_imgae(frame, tune_rotateImageAngle);  // DDEBUG DDEBUG     DDEBUG DDEBUG     DDEBUG DDEBUG     
 		  
 
 
@@ -557,10 +586,15 @@ int main_SHOVAL(int argc, char* argv[])
 	}
 
 	// Init
-	bool runLoadBalance = true; // DDEBUG DDEBUG NO LB
-	BauotechAlgoConnector_Init(runLoadBalance, 1);
+	bool runLoadBalance = true; // DDEBUG FLAG
+	BauotechAlgoConnector_Init(runLoadBalance, 3); // _SYSTEM_INFO == 3
 
-	BauotechAlgoConnector_SetCameraRequestCallback(consoleCameraRequestCallback);
+	BauotechAlgoConnector_SetCameraRequestCallback(consoleAppCameraRequestCallback);
+
+	// update the cams list - also done by load-balancer callBack	
+	for (int i = 0; i < NumberOfVideos; i++)
+		gVideosToRun.push_back(i);
+
 
 
 	int numOfPolygons;
@@ -576,9 +610,6 @@ int main_SHOVAL(int argc, char* argv[])
 
 	if (numOfPolygons == 0)
 		std::cout << "\n*** WARNING : nopolygons had beed defined ! \n";
-
-	for (int i = 0; i < NumberOfVideos; i++)
-		gVideosToRun.push_back(i);
 	
 
 	for (int _videoIndex : gVideosToRun) {
@@ -587,10 +618,43 @@ int main_SHOVAL(int argc, char* argv[])
 		else
 			BauotechAlgoConnector_Config_sync(_videoIndex, algo, width, height, pixelWidth, image_size, youDraw, invertImg, nullptr);
 
+
+		// test:
+		BauotechAlgoConnector_setMinPersonDim(_videoIndex, (uint32_t)16); 
+
 		// set flag for working with consoleApp main():  turn getObjectData() call ON (default is OFF)
 		BauotechAlgoConnector_setConsoleAPI(_videoIndex, uint8_t(1)); 
 
 	}
+
+	if (1) {// DDEBUG DDEBUG TEST FALSE LIST 
+		std::string folderName = R"(C:\Program Files\Bauotech\dll\algo\data\)";
+		std::vector <cv::Mat> r_imgs;
+		std::vector <int> r_camIDs;
+		std::vector <int> r_labels;
+
+		readFalseList(folderName, r_imgs, r_camIDs, r_labels);
+
+		for (int i = 0; i < r_imgs.size(); i++) {
+
+			int width = r_imgs[i].cols;
+			int height = r_imgs[i].rows;
+			int pixelWidth = r_imgs[i].channels();
+			int image_size = width * height * r_imgs[i].channels();
+
+			int camID = r_camIDs[i];
+			int label = r_labels[i];
+
+
+			// BAD: BauotechAlgoConnector_addFalseImg((uint32_t)r_camIDs[i], (uint8_t*)r_imgs[i].data, (uint32_t)width, (uint32_t)height, (uint32_t)pixelWidth, (uint32_t)label);
+			uint8_t* imgPtr = (uint8_t*)malloc(image_size);
+			memcpy(imgPtr, r_imgs[i].data, image_size);
+			BauotechAlgoConnector_addFalseImg((uint32_t)r_camIDs[i], imgPtr, (uint32_t)width, (uint32_t)height, (uint32_t)pixelWidth, (uint32_t)label);
+		}
+	}
+
+
+
 
 #if 0
 	// DDEBUG make cam 1 activeCam:
@@ -610,7 +674,7 @@ int main_SHOVAL(int argc, char* argv[])
 	}
 
 
-	//if (startSkipFrames > 0) frame = tune_imgae(frame, g_rotateImageAngle);
+	//if (startSkipFrames > 0) frame = tune_imgae(frame, tune_rotateImageAngle);
 
 
 
@@ -630,10 +694,8 @@ int main_SHOVAL(int argc, char* argv[])
 	//------------------------------------------------------
 	int skipEveryframes = 0;
 	while (!frame.empty()) {
-		
 
 		if (ASYNC) Sleep(1); // DDEBUG DDEBUG simulate  RT cameras
-		
  
 		cv::Mat post_frame;
 		if (invertImg == 1)
@@ -643,11 +705,11 @@ int main_SHOVAL(int argc, char* argv[])
 
 		
 		int camDelayTime = max(1, int(50./(float)NumberOfVideos));
-		// Launch Algo process for all cameras :
+		//--------------------------------------------------------
+		// Cameras LOOP : Launch Algo process for all cameras :
+		//--------------------------------------------------------
+		updateVideoList(); // update cam list as callback sets
 		for (int _videoIndex : gVideosToRun) {
-
-		//if (ASYNC) 	Sleep(camDelayTime); // DDEBUG DDEBUG simulate  RT cameras
-
 
 			memcpy(pData[_videoIndex], post_frame.data, image_size);
 
@@ -666,6 +728,8 @@ int main_SHOVAL(int argc, char* argv[])
 			}
 		}
 
+
+		// Check FPS
 		float elapsed = timer.sample();
 		maxElapsed = MAX(maxElapsed, elapsed); // keep max delay 
 
@@ -680,13 +744,6 @@ int main_SHOVAL(int argc, char* argv[])
 			maxElapsed = 0;
 		}
 
-#if 0
-		if (frameNum % 30*20 == 0) {
-			//for (int _videoIndex = 0; _videoIndex < NumberOfVideos; _videoIndex++)
-			for (int _videoIndex : gVideosToRun)
-				std::cout << "camera (" << _videoIndex << "): " << objectsDetected[_videoIndex] << " Objects had been detected \n";
-		}
-#endif 
 		//----------------------------------------
 		//      DRAW RESULTS :
 		//----------------------------------------
@@ -704,25 +761,19 @@ int main_SHOVAL(int argc, char* argv[])
 			//MessageBoxA(0, std::string("find " + std::to_string(AIObjectVec.size()) + "objects ").c_str(), "EXCEPTION!", MB_OK);
 			//std::cout << "detection w X h = " << AIObjectVec[0].Width << " X " << AIObjectVec[0].Height << "\n";
 			
-			int beepTime = 0; // DDEBUG 
-			if (beepTime  > 0) // DDEBUG BEEP ON MOTION DETECTION
+			int beepDuration = 0; // DDEBUG 
+			if (beepDuration > 0) // DDEBUG BEEP ON MOTION DETECTION
 				for (auto obj : AIObjectVec)
 					//if (obj.DetectionPercentage > 0) { // MOTION 
 					{
-						Beep(900, 250);
-						/*
-						Templkate matching test
-						cv::Rect bbox = cv::Rect(obj.X, obj.Y, obj.Width, obj.Height);
-						cv::Mat tmplt = frame(bbox);
-						cv::imwrite("c:\\tmp\\falsePerson1.png", frame);
-						cv::imwrite("c:\\tmp\\falseTemplate.png", tmplt);
-						*/
+						Beep(900, beepDuration);
+						cv::waitKey(-1);
 						break;
-						//cv::waitKey(-1);
 					}
 		}
 
 
+		
 		if (DrawDetections == 2)
 			key = disp.draw(height, width, (char*)pData[videoTodisplayInd], AIObjectVec, g_cameraInfos, frameNum, invertImg);
 		else if (DrawDetections == 1)
@@ -736,7 +787,7 @@ int main_SHOVAL(int argc, char* argv[])
 			break;
 
 		// Pause on start
-		if (frameNum == 0) cv::waitKey(-1);
+		//if (frameNum == 0) cv::waitKey(-1);
 
 		for (int i = params.skipFrames; i > 0;i--) {
 			cap >> frame;
@@ -748,20 +799,6 @@ int main_SHOVAL(int argc, char* argv[])
 		frameNum++;
 
 		frame = debugResize(frame);
-		/*
-		if (!debug_resizeImg.empty()) { // DDEBUG RESIZE
-			cv::Mat _frame;
-			cv::resize(frame, _frame, debug_resizeImg);
-			frame = _frame;
-		}
-		if (debug_resizeImgScale[0] > 0) { // DDEBUG RESIZE
-			cv::Mat _frame;
-			cv::resize(frame, _frame, cv::Size(0, 0), debug_resizeImgScale[0], debug_resizeImgScale[1]);
-			frame = _frame;
-		}
-		*/
-
-
 
 
 		if (!frame.empty()) {
@@ -770,7 +807,7 @@ int main_SHOVAL(int argc, char* argv[])
 				cv::resize(frame, _frame, cv::Size(0, 0), ScaleDown, ScaleDown);
 				frame = _frame;
 			}
-			//else   frame = tune_imgae(frame, g_rotateImageAngle);  // DDEBUG  DDEBUG  DDEBUG  DDEBUG 
+			else   frame = tune_imgae(frame, tune_rotateImageAngle);  // DDEBUG  DDEBUG  DDEBUG  DDEBUG 
 			
 		}
 
@@ -833,7 +870,7 @@ int main(int argc, char* argv[])
 
 
 
-#if 1
+#if 0
 /*------------------------------------------------------------------------------------
 	Test pure YOLO detection and display results	
  ------------------------------------------------------------------------------------*/

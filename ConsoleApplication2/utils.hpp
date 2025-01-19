@@ -57,4 +57,8 @@ namespace UTILS_CONSOLE2
 
 	std::vector<cv::Point> roiToPolygon(cv::Rect roi);
 }
+
+
+int readFalseList(std::string folderName, std::vector <cv::Mat>& r_imgs, std::vector <int>& r_camIDs, std::vector <int>& r_labels);
+
 #endif 
