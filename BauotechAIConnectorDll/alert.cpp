@@ -26,7 +26,7 @@
 #include "CObject.hpp"
 #include "alert.hpp"
 
-
+#if 0
 /*------------------------------------------------------------------------------------------------------------
 * Alert for Anomaly (exception) according to Alert setting (the conditions to exception, type, count, area)
 -------------------------------------------------------------------------------------------------------------*/
@@ -47,7 +47,7 @@ int CAlert::Siren(std::vector <CObject> objects)
 
 }
 
-
+#endif
 /*---------------------------------------------------------------------------------
 * Check if object is of the right label & motion 
     and 
@@ -80,7 +80,7 @@ std::vector <CObject> CAlert::selectObjects(std::vector <CObject> objects)
     * label type 
     * max allowed
 ------------------------------------------------------------------------------------------------------------*/
-void CAlert::set(std::vector<cv::Point > polyPoints, int label, int motionType, int max_allowed, int polyID, int camID)
+void CAlert::set(std::vector<cv::Point > polyPoints, int label, int motionType, int max_allowed, int polyID, int timeLimit, int camID)
 {
     m_label = label; 
     m_motionType = motionType;
@@ -88,6 +88,7 @@ void CAlert::set(std::vector<cv::Point > polyPoints, int label, int motionType, 
     m_polyPoints = polyPoints;
     m_ployID = polyID;
     m_camID = camID;
+    m_timeLimit = timeLimit;
 
 	m_bbox = cv::boundingRect(m_polyPoints);
 

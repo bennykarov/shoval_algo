@@ -16,11 +16,11 @@ enum MotionType {
 class CAlert {
 public:
 	CAlert() {}
-	CAlert(std::vector<cv::Point > contour, int label, int motionType, int max_allowed, int ployID, int camID = -1) { set(contour, label, motionType, max_allowed, ployID, camID); }
-	void	set(std::vector<cv::Point > contour, int label, int motionType, int max_allowed, int ployID, int camID);
+	CAlert(std::vector<cv::Point > contour, int label, int motionType, int max_allowed, int ployID, int timeLimit=0, int camID = -1) { set(contour, label, motionType, max_allowed, ployID, timeLimit, camID); }
+	void	set(std::vector<cv::Point > contour, int label, int motionType, int max_allowed, int ployID, int timeLimit, int camID);
 
-	int		Siren(std::vector <CObject> objects);
-	std::vector <CObject> selectObjects(std::vector <CObject> objects);
+	//int		Siren(std::vector <CObject> objects);
+	std::vector <CObject> selectObjects(std::vector <CObject> objects );
 
 public:
 	bool checkPolygon(int width, int height)
@@ -40,12 +40,11 @@ public:
 	int m_camID;
 	int m_ployID;
 	std::vector<cv::Point > m_polyPoints;
-	//std::tuple <int,int> label_allowed;
 	int m_label;
 	int m_motionType; 
 	int m_maxAllowed = -1;
 	cv::Rect  m_bbox;
-
+	int m_timeLimit=0;
 };
 
 
