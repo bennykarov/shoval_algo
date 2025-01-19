@@ -59,6 +59,7 @@ enum MOTION_TYPE {
 };
 
 
+
 class CObject {
 public:
 	CObject() :m_bbox(0,0,0,0) { }
@@ -99,7 +100,8 @@ public:
 	int				m_frameNum;
 	int				m_moving=0; // pixel distance
 	MOTION_TYPE		m_motionType; // previously moved, number of time was moved
-	int				m_age = 0;
+	int				m_age = 0; // in frames	
+	uint64_t		m_ts;      // time stamp
 	float			m_confidence = 0;
 
 private:
