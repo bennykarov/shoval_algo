@@ -80,9 +80,9 @@ cv::Point2f center(cv::Rect r);
 class CFalseTample {
 public:
 	CFalseTample() {}
-	CFalseTample(int camID, cv::Mat img, Labels label) : m_camID(camID),m_img(img), m_label(label) {}
+	CFalseTample(cv::Mat img, Labels label) : m_img(img), m_label(label) {}
 	void set(int camID, cv::Mat img, Labels label) {
-		m_camID = camID;
+		//m_camID = camID;
 		m_img = img;
 		m_label = label;
 	}
@@ -97,11 +97,19 @@ class CDecipher {
 public:
 	void init(int camID, cv::Size imgDim, int debugLevel);
 	int readFalseList();
+
 	void setPersonDim(cv::Size dim) { m_maxPresonDim = dim; } // max person size in pixels
 	void setObjectDim(cv::Size dim) { m_maxObjectDim = dim; } // max person size in pixels
+	void setMinPersonDim(int minHeight) { m_Small_Person_H = minHeight; } // max person size in pixels
+
+	void addFalseImg(cv::Mat img, Labels alertLabel)
+	{
+		m_falseTamplates.push_back({ img , alertLabel });
+	}
+
 	void add_(std::vector <cv::Rect>  BGSEGoutput, std::vector <YDetection> YoloOutput, int frameNum);
 	//std::vector <int>    add(std::vector <cv::Rect>& trackerOutput, std::vector <YDetection> YoloOutput, int frameNum);
-	std::vector <int>    add(std::vector <CObject>& trackerOutput, std::vector <YDetection> YoloOutput, int frameNum);
+	std::vector <int>    add(std::vector <CObject>& trackerOutput, std::vector <YDetection> YoloOutput, int frameNum, uint64_t timeStamp);
 	void consolidate(std::vector <YDetection> YoloOutput,int frameNum);
 	int addTrackerObjects(std::vector <CObject> trackerOutput, std::vector <YDetection> YoloOutput, int frameNum, bool prevWasYolo);
 	//static std::vector <std::tuple<int, int>>  findDuplicated2(std::vector <cv::Rect> trackerBoxes, std::vector <cv::Rect> yoloBoxes);
@@ -136,6 +144,12 @@ public:
 		m_alerts.push_back(CAlert(contour, label, motionType, max_allowed, ployID));
 	}
 
+	void	set(CAlert camInfo)
+	{
+		m_alerts.push_back(camInfo);
+	}
+	
+
 
 	bool suspectedAsFalse(CObject obj, Labels  alertLabel, cv::Mat* frameImg);
 	bool isMatchFalseList(CObject obj, cv::Mat& frameImg);
@@ -162,6 +176,7 @@ private:
 	bool isHidden(CObject obj) { return obj.m_frameNum < m_frameNum; }
 	int  getHiddenLen(CObject obj) { return  m_frameNum - obj.m_frameNum; }
 	int  getHiddenLen(std::vector <CObject> objects, DETECT_TYPE  detectionType);
+	int outOfTimeLimits(CObject obj, CAlert alrt);
 
 private:
 	int match(std::vector <cv::Rect>);
@@ -196,6 +211,7 @@ private:
 	int m_debugLevel = 0;
 	std::vector <int> m_pruneObjIDs; // keep id to prune for Tracker 
 	std::vector <int> m_TrkToRenewIDs; // Renew (setROI) lost objects for Tracker 
+	int m_Small_Person_H = 15;
 };
 
 #endif 

@@ -43,6 +43,13 @@ namespace  TRACKER {
 };
 
 
+struct APIData {
+	std::vector <int> camID;
+	std::vector <int> ployID;
+	std::vector <int> personHeight;
+};
+
+
 struct Config
 {
 	// Operational 
@@ -68,7 +75,7 @@ struct Config
 	float scale = 1.0; 
 	int record = 0;
 
-	int debugTraceCamID = 0;
+	int debugTraceCamID = -1;
 
 	// MOG2 params:
 	int MHistory = 50;

@@ -242,7 +242,8 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 
 	setConfigDefault(m_params);
-	FILE_UTILS::readConfigFile(FILES::CONFIG_FILE_NAME, m_params);
+	APIData apiData;
+	FILE_UTILS::readConfigFile(FILES::CONFIG_FILE_NAME, m_params, apiData);
 	debugSaveParams(w, h, imgSize, pixelWidth, scaleDisplay, m_params);
 
 	if (m_params.useGPU == 0)
@@ -260,6 +261,13 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		camInf.m_bbox = cv::boundingRect(camInf.m_polyPoints);
 
 		m_detectionTypes.push_back((Labels)camInf.m_label);
+	}
+
+
+	for (int i = 0; i < apiData.camID.size();i++) {
+		if (apiData.camID[i] == m_cameraID) {
+			setMinPersonDim(apiData.personHeight[i]);
+		}
 	}
 
 	// remove duplicated lables:
@@ -282,8 +290,9 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		
 	m_decipher.clear();
 
-		for (auto camInf : m_camerasInfo) 
-				m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_motionType, camInf.m_maxAllowed, camInf.m_ployID); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
+	for (auto camInf : m_camerasInfo)
+		m_decipher.set(camInf);
+		//m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_motionType, camInf.m_maxAllowed, camInf.m_ployID); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
 	//---------------------------------------------------------------------------------------
 
 
@@ -376,8 +385,8 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 			if (YOLO_MNGR) {
 				auto yolo2 = ST_yoloDetectors::getInstance();
 				if (yolo2 == nullptr) {
-					std::cout << "Failed to get YOLO Singleton !!!\n"; // DDEBUG unhanled  ERROR 
-					Beep(1000, 50);
+					LOGGER::log(DLEVEL::ERROR2, std::string("Failed to get YOLO resource , cam = " + std::to_string(m_cameraID)));
+					//Beep(1000, 50);
 				}
 				else {
 					yolo2->detect(frame, m_Yolotput);
@@ -401,10 +410,14 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		if (timeForTracking()) {
 			m_tracker.track(frame, m_TrackerObjects, m_frameNum);
 			m_lastFrameNum_tracking = m_frameNum;
-
 		}
 
-		std::vector <int>   TrkDuplicateInds = m_decipher.add(m_TrackerObjects, m_Yolotput, m_frameNum);
+		/* update time stamp
+		for (auto obj : m_TrackerObjects)
+			obj.m_ts = m_timeStamp;
+		*/
+
+		std::vector <int>   TrkDuplicateInds = m_decipher.add(m_TrackerObjects, m_Yolotput, m_frameNum, m_timeStamp);
 
 
 		int mode = timeForDetection() ? 1 : 0;
@@ -481,7 +494,7 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 	* 
 	* 
 	 -----------------------------------------------------------------------------------------------*/
-	int CDetector::process(cv::Mat frameRaw, ALGO_DETECTION_OBJECT_DATA* pObjects, int frameNum)
+	int CDetector::process(cv::Mat frameRaw, ALGO_DETECTION_OBJECT_DATA* pObjects, int frameNum, uint64_t timeStamp)
 	{
 		std::vector <CObject>	detectedObjs;
 
@@ -513,6 +526,8 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 				obj.m_bbox = UTILS::scaleBBox(obj.m_bbox, 1. / m_params.scale);
 				obj.m_bbox.x += m_camROI.x;
 				obj.m_bbox.y += m_camROI.y;
+
+				//obj.m_ts = timeStamp;
 			}
 
 
@@ -530,6 +545,9 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 			m_frameNum = frameNum;
 		else
 			m_frameNum++; // temp - while frameNum for server is missing !!!!!  15-9-24
+
+
+		m_timeStamp = timeStamp;
 
 		return detectedObjs.size();
 	}

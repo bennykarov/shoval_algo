@@ -9,7 +9,15 @@
 
  using namespace std;
 
-
+ template<typename T>
+ std::vector<T> _to_array(const std::string& s)
+ {
+	 std::vector<T> result;
+	 std::stringstream ss(s);
+	 std::string item;
+	 while (std::getline(ss, item, ',')) result.push_back(boost::lexical_cast<T>(item));
+	 return result;
+ }
 
  class FILE_UTILS {
  public:
@@ -30,8 +38,8 @@
 	 static bool folder_exists(const std::string & filename);
 
 
-	 static bool readConfigFile(Config& conf);
-	 static bool readConfigFile(std::string ConfigFName, Config& conf);
+	 static bool readConfigFile(Config& conf, APIData& apiData);
+	 static bool readConfigFile(std::string ConfigFName, Config& conf, APIData& apiData);
 
 
  };

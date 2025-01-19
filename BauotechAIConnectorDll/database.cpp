@@ -249,13 +249,13 @@ void json_as_vector_example()
  }
 
 
-bool FILE_UTILS::readConfigFile(Config& conf)
+bool FILE_UTILS::readConfigFile(Config& conf, APIData &apiData)
 {
-    return readConfigFile(FILES::CONFIG_FILE_NAME, conf);
+    return readConfigFile(FILES::CONFIG_FILE_NAME, conf, apiData);
 
 }
 
-bool FILE_UTILS::readConfigFile(std::string ConfigFName, Config& conf)
+bool FILE_UTILS::readConfigFile(std::string ConfigFName, Config& conf, APIData& apiData)
 {
     if (!FILE_UTILS::file_exists(ConfigFName)) {
         std::cout << "WARNING : Can't find Config.ini file, use default values \n";
@@ -304,6 +304,14 @@ bool FILE_UTILS::readConfigFile(std::string ConfigFName, Config& conf)
     //---------
     conf.debugTraceCamID = conf.debugTraceCamID = pt.get<int>("DEBUG.debugTraceCamID", conf.debugTraceCamID);
 
+
+
+    //--------------------
+    // API special data:
+    //-------------------
+    apiData.camID =         _to_array<int>(pt.get<std::string>("DEBUG.API_camID",""));
+    apiData.ployID =        _to_array<int>(pt.get<std::string>("DEBUG.API_ployID", ""));
+    apiData.personHeight =  _to_array<int>(pt.get<std::string>("DEBUG.API_personHight", ""));
 
 
     return true;

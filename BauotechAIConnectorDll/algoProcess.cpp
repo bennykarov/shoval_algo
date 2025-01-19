@@ -30,19 +30,19 @@ float   g_elapsedMax = 0;
 /*-----------------------------------------------------------------------------------------------
  * Vehicle gather :  "car", "motorbike","aeroplane","bus","truck"
  -----------------------------------------------------------------------------------------------*/
-void CAlgoProcess::makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId, int camID)
+void CAlgoProcess::makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId, int camID, int timeLimit)
 {
 
 	int label = getYoloClassIndex("car");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, timeLimit, camID));
 	label = getYoloClassIndex("motorbike");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, timeLimit, camID));
 	label = getYoloClassIndex("bus");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, timeLimit, camID));
 	label = getYoloClassIndex("truck");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, timeLimit, camID));
 	/*label = getYoloClassIndex("train");
-	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, camID));
+	m_camerasInfo.push_back(CAlert(contour, label, MaxAllowed, motionType, polygonId, timeLimit, camID));
 	*/
 }
 
@@ -59,7 +59,6 @@ CAlgoProcess::~CAlgoProcess()
   ===========================================================================================*/
 	bool CAlgoProcess::init(int video_index, int width, int height, int image_size, int pixelWidth,  int invertImage)
 	{
-		//gAICllbacks[videoIndex](videoIndex, aidata, 1, nullptr, 0);
 		m_videoIndex = video_index;
 		m_width = width;
 		m_height = height;
@@ -70,7 +69,7 @@ CAlgoProcess::~CAlgoProcess()
 		int badImageSize = imageSize();
 
 		if (m_camerasInfo.empty()) {
-			std::cout << "\n\n Error: No camera polygon was found, Ignore this camera !!\n";
+			LOGGER::log(DLEVEL::ERROR2, "No camera polygon was found, Ignoring cam="+std::to_string(video_index));
 			return false;
 		}
 
@@ -90,15 +89,6 @@ CAlgoProcess::~CAlgoProcess()
 		bool ok = m_tracker.init(video_index, m_width, m_height, image_size, m_pixelWidth, invertImage, m_scale/*0.5*/);
 
 		m_timer.start();
-
-
-#if 0
-	// TRACKER TEST 		
-	CTracker _tracker;
-	//_tracker.track_main(R"(C:\Data\office\doubles.ts)", 0);
-	_tracker.track_main(R"(D:\BIOMetrics\rec_A022_564_A.avi)", 6);
-	
-#endif 
 
 		return ok;
 	}
@@ -142,7 +132,7 @@ CAlgoProcess::~CAlgoProcess()
 	/*----------------------------------------------------------------------------------------------------------------------------------
 	* API - add polygon before call to polygonInit()
 	----------------------------------------------------------------------------------------------------------------------------------*/
-	void CAlgoProcess::addPolygon(int CamID, int polygonId, char* DetectionType, int motionType, int MaxAllowed, int Polygon[], int polygonSize)
+	void CAlgoProcess::addPolygon(int CamID, int polygonId, char* DetectionType, int motionType, int MaxAllowed, int Polygon[], int polygonSize, int timeLimit)
 	{
 		std::vector<cv::Point> contour;
 		std::vector <int> labels;
@@ -166,17 +156,27 @@ CAlgoProcess::~CAlgoProcess()
 				contour.push_back(cv::Point(Polygon[i], Polygon[i + 1]));
 
 			if (label == VEHICLE_CLASS_ID)
-				makeVehicleInfo(contour, MaxAllowed, motionType, polygonId, CamID); // push multiple "vehicle" classes 
+				makeVehicleInfo(contour, MaxAllowed, motionType, polygonId, CamID, timeLimit); // push multiple "vehicle" classes 
 			else 
-				m_camerasInfo.push_back(CAlert(contour, label, motionType, MaxAllowed, polygonId, CamID));
+				m_camerasInfo.push_back(CAlert(contour, label, motionType, MaxAllowed, polygonId, timeLimit, CamID));
 		}
 
 
 	}
 
-	void CAlgoProcess::polygonClear()
+	/*---------------------------------------------------------------------------------
+	* remove poly from cameraInfo list
+	* of polyID < 0 than remove all polygons 
+	---------------------------------------------------------------------------------*/
+	void CAlgoProcess::polygonClear(int polyID)
 	{
-		m_camerasInfo.clear();
+		if (polyID < 0)
+			m_camerasInfo.clear();
+		else {
+			auto it = find_if(m_camerasInfo.begin(), m_camerasInfo.end(), [polyID](CAlert camInfo) { return camInfo.m_ployID == polyID; });
+			if (it != m_camerasInfo.end())
+				m_camerasInfo.erase(it);
+		}
 	}
 
 	void CAlgoProcess::initPolygons()
@@ -221,45 +221,47 @@ CAlgoProcess::~CAlgoProcess()
 	int CAlgoProcess::run_th2(TSBuffQueue* bufQ, CLoadBalaner* loader)
 	{
 		CframeBuffer frameBuff;
+		frameBuff.alloc(bufQ->bufferSize());
 		//long frameCount = 0;
 		float elapsedSum = 0;
 		float elapsedMin = 999999;
 		float elapsedMax = 0;
 
 
-		while (m_terminate == false)
-		{
-			if (bufQ->front(frameBuff) == false)
-			{
-				Sleep(10);
-				continue;
-			}
-			break;
+		// Wait for buffer queue to be filled
+		while (!m_terminate && bufQ->IsEmpty()) {
+			Sleep(20);
 		}
 
+		/*------------------------------------------------------------------------------------------------
+		* MAIN ENDLESS LOOP :
+		*------------------------------------------------------------------------------------------------*/
 		while (!m_terminate)
 		{
-			if (bufQ->IsEmpty()) {
-				m_event.Wait();
+			m_event.Wait(); // wait for the next frame to be ready, m_event set() in algoAPI run3()
+
+			if (bufQ->IsEmpty()) { 
+				// Flow Error, since wait() should be released only when buffer is full
+				LOGGER::log(DLEVEL::_SYSTEM_INFO, "algoProcess : Wait for the frame buffer queue to fills up , (cam:frame) = " + std::to_string(m_videoIndex) + " : " + std::to_string(m_frameNum));
+				//m_event.Wait();
 			}
 
-
-			// 3 Leave out conditions:
-			//--------------------------
-			if (bufQ->pop(frameBuff) == false) {
-				continue;
+			//if (bufQ->pop(frameBuff) == false) {
+			if (bufQ->popCopy(frameBuff) == false) {
+				// Flow Error, since wait() should be released only when buffer is full
+				LOGGER::log(DLEVEL::_SYSTEM_INFO, "algoProcess : failed to pop frame from buffer Qeue, (cam:frame) = " + std::to_string(m_videoIndex) + " : " + std::to_string(m_frameNum));
+				//continue;
 			}
 
-			if (1)
-				if (m_frameNum == frameBuff.frameNum)
-				{
-					LOGGER::log(DLEVEL::WARNING1, "run_th2 got dulpicate frame : m_frameNum == frameBuff.frameNum");
-					//if (0) Beep(1200, 10);
-					continue;
-				}
+			// Check for duplicate frame
+			if (m_frameNum == frameBuff.frameNum)
+			{
+				LOGGER::log(DLEVEL::_SYSTEM_INFO, "DUPLICATE FRAME in run_th2() , (cam:frame) = " + std::to_string(m_videoIndex) + " : " + std::to_string(m_frameNum));				
+				// ??? continue;  // PAY ATTENTION !!!!! skip duplicate frame
+			}
 
 			m_frameNum = frameBuff.frameNum;
-			m_ts = frameBuff.ts;
+			//m_ts = frameBuff.ts;
 
 			LOGGER::setFrameNum(m_frameNum);
 
@@ -267,7 +269,7 @@ CAlgoProcess::~CAlgoProcess()
 			try {
 				m_timer.sample();
 				cv::Mat frameBGR = convertPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
-				m_objectCount = m_tracker.process(frameBGR, m_Objects, frameBuff.frameNum); // All detected objects
+				m_objectCount = m_tracker.process(frameBGR, m_Objects, frameBuff.frameNum, frameBuff.ts); // All detected objects
 				m_alertCount = m_tracker.getAlertObjectsCount(); // Alert objects - all exceeds maxAllowed 
 			}
 			catch (const std::exception& err) {
@@ -314,7 +316,7 @@ CAlgoProcess::~CAlgoProcess()
 			try {
 				if (m_callback != nullptr && m_objectCount > 0)
 				{
-					m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0, m_ts);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
+					m_callback(m_videoIndex, &m_Objects[0], m_objectCount, nullptr, 0, frameBuff.ts);  //gAICllbacks[m_videoIndex](m_videoIndex, m_pObjects, m_objectCount, nullptr, 0);
 				}
 			}
 			catch (const std::exception& err) {
@@ -327,6 +329,7 @@ CAlgoProcess::~CAlgoProcess()
 			// -2- send the data to the load balancer priorityTH thread (via thread safe 'ResQueue')
 			//---------------------------------------------------------------------------------------
 			//if (m_objectCount > 0)
+			//if (loader->getMode() == LB_MODE::FULL)
 			{
 				CCycle info;
 				info.detections = m_objectCount;
@@ -336,10 +339,7 @@ CAlgoProcess::~CAlgoProcess()
 				info.motion = m_objectCount > 0 ? 1 : 0;
 				info.timeStamp = m_frameNum; // DDEBUG 
 				info.status = OBJECT_STATUS::DONE;
-				if (loader->isActive()) {
-					loader->ResQueuePush(info);
-					//loader->ResQueueNotify(); // not used in case of 'naive' sync by counting the 'ResQueue' !!!!
-				}
+				loader->ResQueuePush(info);
 			}
 			 
 			//frameCount++;
@@ -369,7 +369,7 @@ CAlgoProcess::~CAlgoProcess()
 		m_timer.start();
 
 		cv::Mat frameBGR = convertPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
-		m_objectCount = m_tracker.process(frameBGR, m_Objects, frameBuff.frameNum);
+		m_objectCount = m_tracker.process(frameBGR, m_Objects, frameBuff.frameNum, frameBuff.ts);
 
 		m_timer.sample();
 
@@ -429,7 +429,7 @@ CAlgoProcess::~CAlgoProcess()
 			m_thread.join();
 
 
-		polygonClear();
+		polygonClear(-1);
 
 		return true;
 	}

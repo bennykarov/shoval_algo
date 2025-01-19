@@ -20,17 +20,25 @@ public:
 	~CAlgoProcess();
 	bool init(int video_index, int width, int height, int image_size, int pixelWidth, int invertImage);
 	//void setRousceSemaphore(CSemaphore *sema) {m_resourceSemaphore = sema;}
-	void addPolygon(int CamID, int polygonId, char* DetectionType, int motionType, int MaxAllowed, int Polygon[], int polygonSize);
-	void polygonClear();
+	void addPolygon(int CamID, int polygonId, char* DetectionType, int motionType, int MaxAllowed, int Polygon[], int polygonSize, int timer);
+	void polygonClear(int polyId);
 	void initPolygons();
 
 	bool terminate();
 	void setCallback(CameraAICallback callback);
 	void setDrawFlag(int youDraw) { m_youDraw = youDraw; }
 	void setConsoleAppAPI(bool flag) { m_supportGetbjectData = flag; }
+	void setMinPersonDim(int minPersonDim) { m_tracker.setMinPersonDim(minPersonDim); }
+	void addFalseImg(char *imgPtr, int width, int height, int pixelWidth, Labels label)
+	{
+		cv::Mat frame = convertPTR2MAT(imgPtr, height, width, pixelWidth);
+		m_tracker.addFalseImg(frame, label);
+	}
+
 
 	int getObjectData(int videoIndex, int index, ALGO_DETECTION_OBJECT_DATA *pObjects, int &frameNum);
 
+	bool isActive() { return !m_terminate; }
 
 	int imageSize();
 	/*---------------------------------------------------------------------
@@ -50,7 +58,7 @@ public:
 	void WakeUp();
 
 private:
-	void makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId, int camID);
+	void makeVehicleInfo(std::vector<cv::Point> contour, int MaxAllowed, int motionType, int polygonId, int camID, int timeLimit);
 	std::vector <int> addMultiPolygons(std::string DetectionTypeList);
 
 
@@ -69,7 +77,7 @@ private:
 	
 	std::atomic_bool m_terminate = false;
 	int m_frameNum = -1;
-	uint64_t m_ts = -1;
+	//uint64_t m_ts = -1;
 	int m_videoIndex;
 
 	int m_width = 0;
