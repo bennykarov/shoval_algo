@@ -49,18 +49,6 @@ typedef enum BAUOTECH_AND_BENNY_KAROV_ALGO
 	ALGO_DEFAULT = 4,
 
 } BAUOTECH_AND_BENNY_KAROV_ALGO;
-typedef struct VideoInfo
-{
-
-	BAUOTECH_AND_BENNY_KAROV_ALGO algo;
-	uint32_t width;
-	uint32_t height;
-	uint32_t pixelWidth;
-	uint32_t image_size;
-	uint8_t youDraw;
-
-} VideoInfo;
- 
 
  
 
@@ -86,19 +74,21 @@ extern "C" {
 		uint8_t invertImage,
 		CameraAICallback callback);
 	 
-	API_EXPORT int BauotechAlgoConnector_AddPolygon(uint32_t videoIndex,	 
-													int CamID,
-													int polygonId,
-													char* DetectionType,
-													int MaxAllowed,
-													int Polygon[],
-													int polygonSize,
-													int motionType = _MotionType::_OnlyMoving);
+	API_EXPORT int BauotechAlgoConnector_AddPolygon(uint32_t videoIndex,
+		int CamID,
+		int polygonId,
+		char* DetectionType,
+		int MaxAllowed,
+		int Polygon[],
+		int polygonSize,
+		int motionType,
+		int timeLimit = 0, // in seconds, Positive  for max limit, negative for  Minimum limit
+		int personHeight = 0);
 
 
 
 
-	API_EXPORT int BauotechAlgoConnector_PolygonClear(uint32_t videoIndex);
+	API_EXPORT int BauotechAlgoConnector_PolygonClear(uint32_t videoIndex, uint32_t polygonId = -1);
 	
 
 
@@ -118,7 +108,7 @@ extern "C" {
 	API_EXPORT int BauotechAlgoConnector_GetAlgoObjectData(uint32_t videoIndex, int index, ALGO_DETECTION_OBJECT_DATA* pObjects);
 
 
-	API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer , int debugLevel=0);
+	API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer, int debugLevel =1 );
 	API_EXPORT void BauotechAlgoConnector_Release();
 	API_EXPORT void BauotechAlgoConnector_Remove(int videoindex);
 
@@ -126,7 +116,9 @@ extern "C" {
 	API_EXPORT void BauotechAlgoConnector_SetCameraRequestCallback(CameraRequestCallback callback);
 	API_EXPORT void BauotechAlgoConnector_SetCameraType(uint32_t videoIndex, uint32_t type);
 	API_EXPORT void BauotechAlgoConnector_setConsoleAPI(uint32_t videoIndex, uint8_t flag);
-	
+	API_EXPORT void BauotechAlgoConnector_setMinPersonDim(uint32_t videoIndex, uint32_t minPersonDim);
+	API_EXPORT int BauotechAlgoConnector_addFalseImg(uint32_t videoIndex, uint8_t* pData, uint32_t width, uint32_t height, uint32_t pixelWidth, uint32_t label);
+
 
 	API_EXPORT void AlgoSetTime(int hour, int min, int sec);
 

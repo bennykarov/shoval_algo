@@ -1,9 +1,7 @@
-//#include "AlgoApi.h"
-//#include <winver.h>
-//#include <windows.h>
 #include <unordered_map>
 #include <string>
 #include <fstream> // debug file
+#include <vector>
 
 #include "opencv2/opencv.hpp"
 
@@ -29,44 +27,12 @@ typedef struct tagRGB32TRIPLE {
 
 const std::string VERSION_NUM = "1.3.0";
 
+std::vector <uint32_t> g_activeVideos;
 
 
-std::string GetDllVersion(const std::string& dllPath) {
-	// Convert the file path to a wide string
-	std::wstring widePath(dllPath.begin(), dllPath.end());
-
-	// Get the size of the version information
-	DWORD dummy;
-	DWORD versionInfoSize = GetFileVersionInfoSizeW(widePath.c_str(), &dummy);
-	if (versionInfoSize == 0) {
-		std::cerr << "Error getting version info size: " << GetLastError() << std::endl;
-		return "";
-	}
-
-	// Allocate memory for version information
-	std::vector<BYTE> versionInfo(versionInfoSize);
-	if (!GetFileVersionInfoW(widePath.c_str(), 0, versionInfoSize, versionInfo.data())) {
-		std::cerr << "Error getting version info: " << GetLastError() << std::endl;
-		return "";
-	}
-
-	// Get the root block of the version information
-	VS_FIXEDFILEINFO* fixedFileInfo;
-	UINT size;
-	if (!VerQueryValueW(versionInfo.data(), L"\\", reinterpret_cast<LPVOID*>(&fixedFileInfo), &size)) {
-		std::cerr << "Error querying version info: " << GetLastError() << std::endl;
-		return "";
-	}
-
-	// Extract version information
-	DWORD major = HIWORD(fixedFileInfo->dwFileVersionMS);
-	DWORD minor = LOWORD(fixedFileInfo->dwFileVersionMS);
-	DWORD build = HIWORD(fixedFileInfo->dwFileVersionLS);
-	DWORD revision = LOWORD(fixedFileInfo->dwFileVersionLS);
-
-	// Format the version string
-	return std::to_string(major) + "." + std::to_string(minor) + "." +
-		std::to_string(build) + "." + std::to_string(revision);
+inline bool isVideoActive(uint32_t videoIndex)
+{
+	return std::find(g_activeVideos.begin(), g_activeVideos.end(), videoIndex) != g_activeVideos.end();
 }
 
 //--------------------------------------------------------------------------------------------------------
@@ -79,7 +45,7 @@ CameraRequestCallback gCameraRequestCallback = nullptr; // moved from header fil
 std::unordered_map<uint32_t, CameraAICallback> gAICllbacks;
 
 CLoadBalaner  g_loadBalancer;
-//CSemaphore  g_ResourceSemaphore;
+
 CAlgoProcess   g_algoProcess[MAX_VIDEOS];
 TSBuffQueue g_bufQ[MAX_VIDEOS];
 //--------------------------------------------------------------------------------------------------------
@@ -104,18 +70,30 @@ API_EXPORT int BauotechAlgoConnector_Init(bool runloadBalancer, int debugLevel)
 
 	InitializeCriticalSection(&gCriticalSection);
 
-		
+	debugLevel = (int)DLEVEL::_SYSTEM_INFO; 
 	LOGGER::init(FILES::OUTPUT_FOLDER_NAME, debugLevel);
-	LOGGER::log(DLEVEL::ERROR1, "BauotechAlgoConnector DLL version = " + VERSION_NUM);
+	//LOGGER::log(DLEVEL::ERROR1, "BauotechAlgoConnector DLL version = " + VERSION_NUM);
 
-	LOGGER::log(DLEVEL::INFO1, "BauotechAlgoConnector_Init()");
+	LOGGER::log(DLEVEL::_SYSTEM_INFO, "BauotechAlgoConnector_Init()");
 
-	uint32_t batchSize; // Eli changes - right now the 'batchSize' init inside g_loadBalancer.init() from config 
-	if (runloadBalancer == true)
-		g_loadBalancer.init(&batchSize);
-	else
-		LOGGER::log(DLEVEL::DEBUG_HIGH, " RUNNIG  W I T H O U T  LOAD BALANCER  !!!!!");
+	uint32_t batchSize = 8; // Eli changes - right now the 'batchSize' init inside g_loadBalancer.init() from config 
 
+	LB_MODE loadbalanerMode;
+	if (runloadBalancer)
+	{
+		LOGGER::log(DLEVEL::_SYSTEM_INFO, " RUNNIG  W I T H  LOAD BALANCER");
+		//loadbalanerMode = LB_MODE::LIGHT; // currently a test  
+		loadbalanerMode = LB_MODE::FULL;
+	}
+	else {
+		LOGGER::log(DLEVEL::_SYSTEM_INFO, " RUNNIG  W I T H O U T  LOAD BALANCER  !!!!!");
+		loadbalanerMode = LB_MODE::STATISTICS;
+	}
+
+
+
+
+	g_loadBalancer.init(&batchSize, loadbalanerMode);
 	m_initialize = true;
 
 
@@ -126,7 +104,7 @@ API_EXPORT void BauotechAlgoConnector_Release()
 {
 	if (m_initialize == true)
 	{
-		LOGGER::log(DLEVEL::INFO1, "call to BauotechAlgoConnector_Release()");
+		LOGGER::log(DLEVEL::_SYSTEM_INFO, "call to BauotechAlgoConnector_Release()");
 		for (int i = 0; i < MAX_VIDEOS; i++) {
 			g_algoProcess[i].terminate();
 			g_algoProcess[i].~CAlgoProcess();
@@ -139,14 +117,14 @@ API_EXPORT void BauotechAlgoConnector_Release()
 	}
 }
 
-API_EXPORT void BauotechAlgoConnector_Remove(int videoindex)
+API_EXPORT void BauotechAlgoConnector_Remove(uint32_t videoindex)
 {
-	if (m_initialize == true)
+	if (m_initialize == true && isVideoActive(videoindex))
 	{
 		g_loadBalancer.remove(videoindex);
 		g_algoProcess[videoindex].terminate();
-		
-		LOGGER::log(DLEVEL::INFO1, "BauotechAlgoConnector_Rmove() for cam# = "+std::to_string(videoindex));
+		g_activeVideos.erase(std::remove(g_activeVideos.begin(), g_activeVideos.end(), videoindex), g_activeVideos.end());
+		LOGGER::log(DLEVEL::_SYSTEM_INFO, "BauotechAlgoConnector_Rmove() for cam# = "+std::to_string(videoindex));
 		
 	}
 }
@@ -174,16 +152,21 @@ API_EXPORT int BauotechAlgoConnector_Run3(uint32_t videoIndex, uint8_t* pData, u
 	auto error = g_loadBalancer.acquire(videoIndex);
 	if (error != AQUIRE_ERROR::NOT_ACTIVE && error != AQUIRE_ERROR::OK)
 	{
-		LOGGER::log(DLEVEL::DEBUG_HIGH, "LB Ignors cam #" + std::to_string(videoIndex));
+		LOGGER::log(DLEVEL::_SYSTEM_INFO, "LB Ignors cam #" + std::to_string(videoIndex));
 		if (forceList)
 			return false;	
 	}
 
 	// Push buffer 
+	timestamp = 0; // time stamp is done in the push() function
 	bool ok = g_bufQ[(int)videoIndex].push(CframeBuffer(frameNumber, timestamp, (char*)pData));
-	g_algoProcess[videoIndex].WakeUp();
+	if (!ok) {
+		LOGGER::log(DLEVEL::_SYSTEM_INFO, "API: can't push frame to buffer Queue , cam = " + std::to_string(videoIndex));
+		return ok;
+	}
 
-	return ok ? 1 : 0;
+	g_algoProcess[videoIndex].WakeUp();
+	return ok;
 }
 
 /*-------------------------------------------------------------------------------------------------------------------
@@ -202,20 +185,27 @@ API_EXPORT int BauotechAlgoConnector_AddPolygon(uint32_t videoIndex,
 	int MaxAllowed,
 	int Polygon[],
 	int polygonSize,
-	int motionType)
+	int motionType,
+	int timeLimit, // in seconds, Positive  for max limit, negative for  Minimum limit
+	int personHeight)
 {
-	std::string logMSG = "API..._AddPolygon() polygonPoints = " + std::to_string(polygonSize) + " cam = " + std::to_string(videoIndex);
-	LOGGER::log(DLEVEL::INFO2, logMSG.c_str());
+	if (!g_algoProcess[videoIndex].isActive())
+		return 0;
 
-	g_algoProcess[videoIndex].addPolygon(CamID, polygonId, DetectionType, motionType, MaxAllowed, Polygon, polygonSize);
+	std::string logMSG = "API..._AddPolygon(); polyID = " + std::to_string(polygonId) + " cam = " + std::to_string(videoIndex);
+	LOGGER::log(DLEVEL::_SYSTEM_INFO, logMSG.c_str());
+
+	g_algoProcess[videoIndex].addPolygon(CamID, polygonId, DetectionType, motionType, MaxAllowed, Polygon, polygonSize, timeLimit);
 	return 1;
 		
 }
 
   
-int BauotechAlgoConnector_PolygonClear(uint32_t videoIndex)
+int BauotechAlgoConnector_PolygonClear(uint32_t videoIndex, uint32_t polygonId)
 {
-	g_algoProcess[videoIndex].polygonClear();
+	std::string logMSG = "API..._AddPolygon(); polyID = " + std::to_string(polygonId) + " cam = " + std::to_string(videoIndex);
+	LOGGER::log(DLEVEL::_SYSTEM_INFO, logMSG.c_str());
+	g_algoProcess[videoIndex].polygonClear(polygonId);
 	return 1;
 }
 
@@ -230,6 +220,7 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 											CameraAICallback callback)
 											
 {
+	if (videoIndex >= MAX_VIDEOS) return 0;
 
 	g_loadBalancer.initCamera(videoIndex); 
 
@@ -250,7 +241,9 @@ API_EXPORT int BauotechAlgoConnector_Config(uint32_t videoIndex,
 
 
 	std::string logMSG = "BauotechAlgoConnector_Config() cam=" + std::to_string(videoIndex);
-	LOGGER::log(DLEVEL::INFO1, logMSG.c_str());
+	LOGGER::log(DLEVEL::_SYSTEM_INFO, logMSG.c_str());
+
+	g_activeVideos.push_back(videoIndex);
 
 	return 1;
 }
@@ -265,10 +258,16 @@ API_EXPORT int BauotechAlgoConnector_Config_sync(uint32_t videoIndex,
 	uint8_t invertImage,
 	CameraAICallback callback)	 
 {
+	if (videoIndex >= MAX_VIDEOS) return 0;
 
-	// Init Queue 
+
 	if (!g_algoProcess[videoIndex].init(videoIndex, width, height, image_size, pixelWidth, invertImage))
 		return -1;
+
+	g_activeVideos.push_back(videoIndex);
+
+	std::string logMSG = "BauotechAlgoConnector_Config_sync() cam=" + std::to_string(videoIndex);
+	LOGGER::log(DLEVEL::_SYSTEM_INFO, logMSG.c_str());
 
 	return 1;
 }
@@ -277,15 +276,14 @@ API_EXPORT int BauotechAlgoConnector_Config_sync(uint32_t videoIndex,
 API_EXPORT void BauotechAlgoConnector_SetCameraRequestCallback(CameraRequestCallback callback)
 {
 	LOGGER::log(DLEVEL::INFO1, "BauotechAlgoConnector_SetCameraRequestCallback()");
-
-	//gCameraRequestCallback = callback;
 	g_loadBalancer.SetCameraRequestCallback(callback);
 }
 
 API_EXPORT void BauotechAlgoConnector_SetCameraType(uint32_t videoIndex, uint32_t type)
 {
-	LOGGER::log(DLEVEL::INFO1, std::string("BauotechAlgoConnector_SetCameraType" + std::to_string(videoIndex)));
-	
+	if (videoIndex >= MAX_VIDEOS) return;
+
+	LOGGER::log(DLEVEL::_SYSTEM_INFO, std::string("BauotechAlgoConnector_SetCameraType" + std::to_string(videoIndex)));
 	g_loadBalancer.SetCameraType(videoIndex, type);
 }
 
@@ -294,7 +292,19 @@ API_EXPORT void BauotechAlgoConnector_SetCameraType(uint32_t videoIndex, uint32_
 ------------------------------------------------------------------------------------------------------------------*/
 API_EXPORT void BauotechAlgoConnector_setConsoleAPI(uint32_t videoIndex, uint8_t swichON)
 {
+	if (videoIndex >= MAX_VIDEOS) return;
 	g_algoProcess[videoIndex].setConsoleAppAPI(swichON);
-
 }
 
+API_EXPORT void BauotechAlgoConnector_setMinPersonDim(uint32_t videoIndex, uint32_t  minheight)
+{
+	g_algoProcess[videoIndex].setMinPersonDim((int)minheight);
+}
+
+
+API_EXPORT int BauotechAlgoConnector_addFalseImg(uint32_t videoIndex, uint8_t* pData, uint32_t width, uint32_t height, uint32_t pixelWidth, uint32_t label)
+{
+	if (videoIndex >= MAX_VIDEOS) return 0;
+	g_algoProcess[videoIndex].addFalseImg((char*)pData, width, height, pixelWidth, Labels(label));
+	return 1;
+}
