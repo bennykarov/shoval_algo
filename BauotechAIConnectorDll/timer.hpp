@@ -11,9 +11,10 @@
 * All values are in MILLI SECONDS 
  --------------------------------------------------------------------------------------------------------------------------------------------------*/
 
-
 class CTimer {
 public:
+	CTimer() { start(); }
+
 	void  start() {
 		m_start_time = m_cur_time = std::chrono::system_clock::now();
 	}
@@ -37,8 +38,8 @@ public:
 	{
 		m_cur_time = std::chrono::system_clock::now();
 
-		auto elapsed = m_cur_time - m_start_time;
-		return elapsed.count();
+		m_elapsed = m_cur_time - m_start_time;
+		return m_elapsed.count();
 	}
 
 	//double  durationFromStart() { return (m_cur_time - m_start_time).count() / 1000.; } 

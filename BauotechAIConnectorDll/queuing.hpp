@@ -5,17 +5,65 @@
 #include <mutex> 
 #include <queue> 
 
-//#include <boost/circular_buffer.hpp>
+
+#include <boost/circular_buffer.hpp>
+#include "timer.hpp"
 
 
 class CframeBuffer {
 public:
-    CframeBuffer() {}
-    CframeBuffer(int _frameNum, int64_t _ts, char* _ptr) { ts = _ts; frameNum = _frameNum; ptr = _ptr; }
+    char* ptr = nullptr;
+    int64_t frameNum = -1;
+    uint64_t ts = 0;
+    int     bufSize = 0;
+    //CTimer m_timer;
 
-    char *ptr = nullptr;
-    int frameNum = -1;
-    int64_t ts = -1;
+public:
+    CframeBuffer() {  }
+    CframeBuffer(int64_t  _frameNum, int64_t _ts, char* _ptr) 
+    { 
+        ts = _ts; 
+        frameNum = _frameNum; 
+        ptr = _ptr; 
+    }
+
+
+public:
+    bool alloc(int size) {
+		if (ptr != nullptr) {
+			free();
+		}
+		ptr = new char[size];
+        bufSize = size;
+		return ptr != nullptr;
+	}
+
+    // clone the buffer with inner allocation
+    CframeBuffer clone()
+    {
+		CframeBuffer newFrame;
+        newFrame.frameNum = frameNum;
+        newFrame.ts = ts;
+        newFrame.bufSize = bufSize;
+
+        newFrame.alloc(bufSize);
+		memcpy(newFrame.ptr, ptr, bufSize);
+
+        return newFrame;
+	}
+
+    // copy the buffer - assume ptr is already allocated
+    CframeBuffer copy(CframeBuffer &newFrame)
+    {
+        newFrame.frameNum = frameNum;
+        newFrame.ts = ts;
+        newFrame.bufSize = bufSize;
+
+        //newFrame.alloc(bufSize);
+        memcpy(newFrame.ptr, ptr, bufSize);
+
+        return newFrame;
+    }
 
     void free() {
         if (ptr != nullptr) {
@@ -25,20 +73,22 @@ public:
 	}
 };
 
-
+//----------------------------
 // Thread-safe buffer queue
+//---------------------------
 class TSBuffQueue {
 private:
-    std::mutex g_BufferMutex;
-    //std::vector <char*>  m_buffers;
+    std::mutex m_BufferMutex;
     std::vector <CframeBuffer>  m_buffers;
+    int m_buffersCounter=0; // count buffer in queue
     int m_imgWidth;
     int m_imgHeight;
     int m_depth; // in bytes
+    CTimer m_timer;
+
     //-------------------------------------------------------------------------------------------------------------
     // bufferSize() : depth ==2 here means YV12, where depth is 1.5 bytes per pixel (where 4 pixels share data):
     //-------------------------------------------------------------------------------------------------------------
-    int bufferSize() { return (m_depth == 2 ? bufferSize_YV12() : m_imgWidth * m_imgHeight * m_depth); }
     int bufferSize_YV12() { return int((float)(m_imgWidth * m_imgHeight) * 1.5); }
     int m_queueLen;
 
@@ -47,11 +97,14 @@ private:
 
     int ptrNext(int ptr);
 
-    //boost::circular_buffer<int> m_queueIndex;
-    int getQueueSize();
+    //int getQueueSize();
+
+    bool queueOverflow() { return pushPtr == popPtr && m_buffersCounter == m_queueLen; }
+
      
 
 public:
+    int bufferSize() { return (m_depth == 2 ? bufferSize_YV12() : m_imgWidth * m_imgHeight * m_depth); }
     TSBuffQueue() {}
     ~TSBuffQueue()
     {
@@ -64,6 +117,7 @@ public:
     // Pushes an element to the queue 
     bool push(CframeBuffer);
     bool IsEmpty();
+    bool popCopy(CframeBuffer& poppedFrame);
     bool pop(CframeBuffer& poppedFrame);
     bool front(CframeBuffer& frontFrame);
 };

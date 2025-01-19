@@ -24,7 +24,7 @@ public:
 };
 
 
-StatisticsInfo printStatistics(boost::circular_buffer<CCycle> cyclesInfo, std::vector <int> camList, int batchSize, int currMaxPrioty);
+StatisticsInfo printStatistics(std::vector <CCycle> cyclesInfo, std::vector <int> camList, int batchSize, int currMaxPrioty);
 
 class CDashboard {
 public:

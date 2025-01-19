@@ -8,6 +8,8 @@
 
 #include "utils.hpp"
 #include "config.hpp"
+#include "utils.hpp"
+
 #include "prediction.hpp"
 
 
@@ -273,7 +275,7 @@ cv::Rect2f CPredict::predictNext(CObject obj, cv::Rect2f mogROI, DET_TYPE &type)
 		 cv::Rect2f predictBox = obj.m_bboxes[lastInd] + meanMotion;
 
 		 // Require minimal overlapping for none-hidden type 
-		 if (bboxesBounding(predictBox, mogROI) > MinOverLappedRatio) {
+		 if (OverlappingRatio_subjective(predictBox, mogROI) > MinOverLappedRatio) {
 			 //predictBox = predictBox & mogROI; // Update size with real ROI
 			 type = DET_TYPE::Prediction;
 		 }

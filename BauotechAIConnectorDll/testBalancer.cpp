@@ -33,6 +33,7 @@ std::mutex print_mutex;
 
 const int MaxCameras = 20; // DDEBUG DDEBUG TO DELETE
 
+#define USE_LOAD_BALANCER
 #ifdef USE_LOAD_BALANCER
 
 
@@ -53,109 +54,13 @@ const int beatTick = 33;
 // PRINT STATISTICS 
 //-=======================================================================
 //-=======================================================================
-bool printCyclesSummary(std::string fname, boost::circular_buffer <CCycle> cyclesInfo, std::vector <int> activeCameras, int batchSize, int currMaxPriority)
-{
-	static CTimer timer;
-	static bool FirstTime = true;
-
-	if (FirstTime) {
-		timer.start();
-		FirstTime = false;
-	}
-
-
-	auto LOG_SAVIRITY = DLEVEL::ERROR2;
-
-	std::ofstream queueFile; // (fname);
-	std::stringstream msg;
-
-	LOGGER::log(LOG_SAVIRITY, "================  printStatistics   ==========================");
-	LOGGER::log(LOG_SAVIRITY, "");
-
-		//msg   << "total cycles = " << cyclesInfo.size();
-	int batchCycles = cyclesInfo.size() / batchSize;
-	float elapsed = timer.sample();
-	float batchFPS = (1000. * batchCycles) / elapsed;
-
-
-	LOGGER::log(LOG_SAVIRITY, std::string("Batches cycles = " + std::to_string(batchCycles) + "; FPS = " + std::to_string(batchFPS)));
-	LOGGER::log(DLEVEL::ERROR2, std::string("( curr Max priority = " + std::to_string(currMaxPriority) + "\n"));
-	//LOGGER::log(DLEVEL::ERROR2, std::string("Batch FPS  = " + std::to_string(batchFPS) + "\n"));
-
-
-	// Summarize info for each cam
-	for (int cam : activeCameras) {
-		int camID = cam;
-		auto lambda = [camID](CCycle c) { return c.camID == camID; };
-		int processNum = std::count_if(cyclesInfo.begin(), cyclesInfo.end(), lambda);
-		int activeFrames = std::count_if(cyclesInfo.begin(), cyclesInfo.end(), [cam](CCycle c) { return c.camID == cam && c.activeCamera > 0; });
-
-		// OLD FASION COUNT 
-		int sumDetectoins = 0;
-		for (auto cycleInf : cyclesInfo) {
-			if (cycleInf.camID == cam)
-				sumDetectoins += cycleInf.detections > 0 ? 1 : 0;
-		}
-		//int detectionsNum = std::count(cyclesInfo.begin(), cyclesInfo.end(), [cam](CCycle c) { return c.res  .camID == cam; });
-
-		//--------------------------
-		// Calc avg ellapsed time
-		//--------------------------
-		int prevFrameNum = -1;
-		std::vector <int> framesNum;
-		for (int i = 0; i < cyclesInfo.size(); i++) {
-			if (cyclesInfo[i].camID == cam)
-				framesNum.push_back(cyclesInfo[i].timeStamp);
-		}
-
-		float camFPS = (1000. * processNum) / elapsed;
-
-		bool detailed = true;
-
-		if (detailed) {
-			int ellapsedTime = 0;
-			int max_ellapsedTime = 0;
-			int min_ellapsedTime = 99999;
-			for (int i = 1; i < framesNum.size(); i++) {
-				int ellapsed = framesNum[i] - framesNum[i - 1];
-				if (ellapsed == 1)
-					int debug = 10;
-				ellapsedTime += ellapsed;
-				max_ellapsedTime = max(max_ellapsedTime, ellapsed);
-				min_ellapsedTime = min(min_ellapsedTime, ellapsed);
-			}
-			msg << "cam= " << cam << " ; active= " << activeFrames << " ; detections = " << sumDetectoins << " ; cycles = " << processNum << std::setprecision(2) << "; FPS = " << camFPS << std::setprecision(2) << " (min,max = " << min_ellapsedTime << "," << max_ellapsedTime << ")";
-
-
-
-		}
-		else {
-			msg << "cam= " << cam << " ; active = " << activeFrames << " ; detections = " << sumDetectoins << " ; cycles = " << processNum << std::setprecision(2) << "; FPS = " << camFPS << std::setprecision(2);
-		}
-		LOGGER::log(LOG_SAVIRITY, msg.str());
-		LOGGER::log(LOG_SAVIRITY, "--------------------------------------------------------------");
-		msg.str("");
-		msg.clear();
-
-	}
-
-	//if (writeLogFile)  queueFile.close();
-
-	return true;
-}
-
 
 //StatisticsInfo  printStatistics(boost::circular_buffer<CCycle> cyclesInfo, std::vector <int> cameraList, int batchSize, int currMaxPriority)
-StatisticsInfo  printStatistics(boost::circular_buffer<CCycle> cyclesInfo, std::vector <int> activeCameras, int batchSize, int currMaxPriority)
+StatisticsInfo  printStatistics(std::vector <CCycle> cyclesInfo, std::vector <int> activeCameras, int batchSize, int currMaxPriority)
 {
 	StatisticsInfo statisticsRes;
 
-	//std::string statisticsFName = "c:\\tmp\\priorQueueSumm.csv";
 	std::string statisticsFName = "";
-
-	//printCyclesSummary(statisticsFName, cyclesInfo, cameraList, batchSize, currMaxPrioty);
-	//bool printCyclesSummary(std::string fname, boost::circular_buffer <CCycle> cyclesInfo, std::vector <int> activeCameras, int batchSize, int currMaxPriority)
-
 
 	static CTimer timer;
 	static bool FirstTime = true;
@@ -164,7 +69,6 @@ StatisticsInfo  printStatistics(boost::circular_buffer<CCycle> cyclesInfo, std::
 		timer.start();
 		FirstTime = false;
 	}
-
 
 	auto LOG_SAVIRITY = DLEVEL::ERROR2;
 
@@ -182,7 +86,6 @@ StatisticsInfo  printStatistics(boost::circular_buffer<CCycle> cyclesInfo, std::
 
 	LOGGER::log(LOG_SAVIRITY, std::string("Batches cycles = " + std::to_string(batchCycles) + "; FPS = " + std::to_string(batchFPS)));
 	LOGGER::log(DLEVEL::ERROR2, std::string("( curr Max priority = " + std::to_string(currMaxPriority) + "\n"));
-	//LOGGER::log(DLEVEL::ERROR2, std::string("Batch FPS  = " + std::to_string(batchFPS) + "\n"));
 
 
 	// Summarize info for each cam
@@ -198,7 +101,6 @@ StatisticsInfo  printStatistics(boost::circular_buffer<CCycle> cyclesInfo, std::
 			if (cycleInf.camID == cam)
 				sumDetectoins += cycleInf.detections > 0 ? 1 : 0;
 		}
-		//int detectionsNum = std::count(cyclesInfo.begin(), cyclesInfo.end(), [cam](CCycle c) { return c.res  .camID == cam; });
 
 		//--------------------------
 		// Calc avg ellapsed time
@@ -227,9 +129,6 @@ StatisticsInfo  printStatistics(boost::circular_buffer<CCycle> cyclesInfo, std::
 				min_ellapsedTime = min(min_ellapsedTime, ellapsed);
 			}
 			msg << "cam= " << cam << " ; active = " << activeFrames << " ; detections = " << sumDetectoins << " ; cycles = " << processNum << std::setprecision(2) << "; FPS = " << camFPS << std::setprecision(2) << " (min,max = " << min_ellapsedTime << "," << max_ellapsedTime << ")";
-
-
-
 		}
 		else {
 			msg << "cam= " << cam << " ; active = " << activeFrames << " ; detections = " << sumDetectoins << " ; cycles = " << processNum << std::setprecision(2) << "; FPS = " << camFPS << std::setprecision(2);
@@ -241,12 +140,9 @@ StatisticsInfo  printStatistics(boost::circular_buffer<CCycle> cyclesInfo, std::
 
 	}
 
-	//if (writeLogFile)  queueFile.close();
 
 	statisticsRes.camID = -1; // DDEBUG RETURN FAKED EMPTY DATA  
 	return statisticsRes;
-
-
 } 
 
 #endif  
