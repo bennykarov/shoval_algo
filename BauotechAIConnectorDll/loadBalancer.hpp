@@ -12,7 +12,7 @@
 #include "config.hpp"
 #include <tuple>
 
-#include <boost/circular_buffer.hpp>
+//#include <boost/circular_buffer.hpp>
 
 #include "semaphore.hpp"
 #include "priority_queue.hpp"
@@ -26,6 +26,15 @@ typedef void (*CameraRequestCallback)(const uint32_t camera[], int size); // (wa
 /*===========================================================================================
 * AlgoProcess (thread) class
   ===========================================================================================*/
+
+
+enum LB_MODE {
+    FULL = 1,
+    LIGHT = 2,
+    STATISTICS = 3
+};
+
+
 enum {
 	FREE = 0,
 	BUSY = 1
@@ -116,7 +125,7 @@ enum AQUIRE_ERROR {
     NOT_ACTIVE 
 };
 
-
+#define USE_LOAD_BALANCER
 #ifdef USE_LOAD_BALANCER
 
 
@@ -192,7 +201,8 @@ class CLoadBalaner  {
 public:
     
     bool isActive() { return m_active; }
-    int init(uint32_t* batchSize);
+    LB_MODE getMode() { return m_Mode; }
+    int init(uint32_t* batchSize, LB_MODE lbMode = LB_MODE::FULL);
     //int init(LB_SCHEME scheme = LB_SCHEME::V301);
     void stop() 
     {
@@ -202,18 +212,21 @@ public:
     void remove(int camID);
     bool releaseDebug(int camID);
 
+    /*--------------------------------------------
+     * Three balancers: 
+     * (1) full balancer
+     * (2) light balancer
+     * (3) statistics only (for Eli "balancer")
+     ---------------------------------------------*/
     void priorityTH(); // thread to consolidate cam detection results 
-    void priorityTH_OLD(); // thread to consolidate cam detection results 
-    bool priorityUpdate(); // setPriority to top queue
+    void priorityTHLight();
+    void statisticsTH(); 
+
     bool priorityUpdateTop(); // Handle top cam in queue
 
     // Callback for camera threads 
     void ResQueuePush(CCycle);
     static void ResQueueNotify();
-    /*
-    static std::queue<CCycle>* getResQueuePtr();
-    static std::condition_variable *getResCondVPtr();
-    */
 
     bool isCamInBatchList(int camID); 
 
@@ -234,11 +247,13 @@ private:
     
     int getDebugLevel() { return m_debugLevel;  } // for algoAPI 
 
-    int priorityOerflow()
+    /*
+    int priorityOverflow()
     {
         int overflow = m_topPriority - m_priorityQueue.top().priority;
         return max(0, overflow); // 'overflow' can be negative
     }
+    */
 
     int calcPriority(int motion, int detections, int alerts, int observed);
     int calcPriority_V0(int motion, int detections, int alert, int observed);
@@ -259,18 +274,14 @@ private:
     int calcPriority_V301(int motion, int detections, int alert, int observed);
     int calcPriority_V302(int motion, int detections, int alert, int observed);
 
-    void setPrior(CCycle info);
+    //void setPrior(CCycle info);
 
-    void prepareNextBatch();
+    void prepareNextBatch(int mode);
+    void prepareNextBatchFull();
+    void prepareNextBatchLight();
+
+    std::vector <int> getCamTopLight();
     void updatePriorThresholds();
-
-    void beat(int cycles = 1)
-    {
-        m_priorityQueue.beat(cycles);
-    }
-
-
-    void prior();
 
     void printQueueInfo();
 
@@ -279,23 +290,23 @@ public:
     CSemaphore m_resourceBouncer;
 
 private:
-    //int convertToQueuePriority_V1(int priority);
     int convertToQueuePriority_simple(int priority);
     int convertToQueuePriority(int priority);
+    bool initYoloMngr(int resourceNum, std::string modelFolder);
 
 private:
+
+    LB_MODE m_Mode = LB_MODE::FULL;
+
+
     std::vector <int>   m_cameraBatchList; // list sent to server 
-    //std::vector <int>   m_cameraBatchListDone; // list sent to server 
-    //ThreadSafeVector <int>  m_cameraBatchListDone; 
     std::vector <int>   m_cameraBatchListAquired; // list sent to server 
 
     std::vector <int>   m_cameraBatchList_prev; // list sent to server 
     std::vector <int>   m_camsProcessed; // cameras had been process (return in resQueue)
-    //std::vector <int>   m_camInQueue; // cameras actually in process
     std::vector <int>   m_camType; // cameras type
     std::vector <int>   m_camPriority_Debug; // cameras type
-    //std::vector <CCycle>  
-    boost::circular_buffer<CCycle>   m_logBatchQueue;
+    std::vector <CCycle>   m_logBatchQueue;
     int m_debugLevel = 1; // DDEBUG CONST 
     int m_cycleCounter = 0; // batch counter 
     std::vector <CResourceRange>   m_resourcesRange;
@@ -306,12 +317,11 @@ private:
 
     CPriority_queue m_priorityQueue;
 
-
     bool m_active = false;
+    bool m_statisticsOnly = false;
 
-	//int m_reoucesLen = 4;
 	int m_camerasNum = 0;
-    boost::circular_buffer<std::chrono::system_clock::time_point> m_timestamps;
+    //boost::circular_buffer<std::chrono::system_clock::time_point> m_timestamps;
     std::chrono::system_clock::time_point  m_lastBeat;
     const int TIMESTAMP_LEN = 1000;
     bool m_startProcess = false; // stream start =  run3() was called 
@@ -327,6 +337,8 @@ private:
 
 
     std::thread  m_PrioirityTh;
+
+    int m_lastCamIndex = 0;
 
     bool m_printStatistics = true; // DDEBUG PRINTING 
 
