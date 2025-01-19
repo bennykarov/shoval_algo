@@ -880,12 +880,11 @@ std::string toUpper(std::string str)
 			// COLOR_YUV2BGR_Y422  COLOR_YUV2BGR_UYNV  COLOR_YUV2BGR_UYVY COLOR_YUV2BGR_YUY2 COLOR_YUV2BGR_YUYV COLOR_YUV2BGR_YVYU 
 			//cv::cvtColor(frameRaw, m_frameOrg, cv::COLOR_YUV2BGR_Y422);
 			cv::Mat mYUV(height + height / 2, width, CV_8UC1, data);
-			//cv::Mat mRGB(m_height, m_width, CV_8UC3);
 			frameBGR = cv::Mat(height, width, CV_8UC3);
 			cvtColor(mYUV, frameBGR, cv::COLOR_YUV2BGR_YV12, 3);
 		}
 		else
-			frameBGR = frameRaw; // ?? 
+			frameBGR = frameRaw.clone(); // ?? 
 
 
 
@@ -984,11 +983,8 @@ std::string toUpper(std::string str)
 			  retBox.y = frameDim.height - retBox.height - 1;  // Shift X back
 	  }
 
-	  if (0)
-	  {
-		  retBox.x = max(0, retBox.br().x);
-		  retBox.y = max(0, retBox.br().y);
-	  }
+	  retBox.x = max(0, retBox.x);
+	  retBox.y = max(0, retBox.y);
 	  // Missing Check shift back - DDEBUG 
 
 	  return retBox;
