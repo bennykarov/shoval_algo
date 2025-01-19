@@ -44,17 +44,21 @@ public:
 	bool init(int camIndex, int w, int h, int imgSize, int pixelWidth, int invertImage, float scaleDisplay = 0.5);
 	bool InitGPU();
 	void setCamerasInfo(std::vector <CAlert> camerasInfo);
-	
+	void setMinPersonDim(int minPersonDim) { m_decipher.setMinPersonDim(minPersonDim); }
 	// Process
 	int process(void* dataTemp, ALGO_DETECTION_OBJECT_DATA* pObjects);
-	int process(cv::Mat frame, ALGO_DETECTION_OBJECT_DATA* pObjects, int frameNum);
+	int process(cv::Mat frame, ALGO_DETECTION_OBJECT_DATA* pObjects, int frameNum, uint64_t timeStamp);
 	int processFrame(cv::Mat &frame);
 
 	int debugSaveDetectionsImages(std::vector <CObject>	detectedObjs, std::vector <int> camIDs = std::vector <int>());
 
 	int getAlertObjectsCount() { return m_decipher.getAlertObjectsNum();  }
 	void setDrawing(bool flag) {  doDrawing = flag; }
-
+	
+	void addFalseImg(cv::Mat frame, Labels alertLabel)
+	{
+		m_decipher.addFalseImg(frame, alertLabel);
+	}
 
 private:
 	bool motionDetected(cv::Mat mask);
@@ -69,6 +73,7 @@ private:
 	int m_height = 0;
 	void *m_data = NULL;
 	int m_frameNum = 0;
+	uint64_t m_timeStamp = 0;
 	int m_lastFrameNum_detection = -100;
 	int m_lastFrameNum_motion = -100;
 	int m_lastFrameNum_tracking = -100;
@@ -100,7 +105,6 @@ private:
 	std::vector <cv::Rect>  m_BGSEGoutputLarge; // Larger objects (not a human)
 
 	CBGSubstruct   m_bgSeg;
-	int m_bgSegHistory = 0; // +1 for motion frame, -1 for no motion frame
 	int m_colorDepth = 4;
 	Config m_params;
 	std::vector <CRoi2frame>  m_roiList;
