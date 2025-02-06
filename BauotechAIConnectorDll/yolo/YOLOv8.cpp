@@ -3,6 +3,7 @@
 #include <opencv2/core/mat.hpp>
 #include <opencv2/opencv.hpp>
 
+#include "../database.hpp" // for FILE_UTILS
 #include "yolo.hpp"
 
 using namespace std;
@@ -87,10 +88,10 @@ vector<Mat> pre_process(Mat& input_image, Net& net)
         Main YDetection function:
   --------------------------------------------------------------------------------------------------------------------------*/
 
-bool CYolo8::load_net(bool is_cuda)
+bool CYolo8::load_net(std::string modelMame , bool is_cuda)
 {
-    //auto result = cv::dnn::readNetFromONNX(m_modelFolder + YOLO_MODEL_NAME);  
-    auto result = cv::dnn::readNet(m_modelFolder + YOLO_MODEL_NAME);
+    auto result = cv::dnn::readNetFromONNX(modelMame);  
+    //auto result = cv::dnn::readNet(modelMame);
 
     if (result.empty())
         return false;
@@ -112,22 +113,26 @@ bool CYolo8::load_net(bool is_cuda)
 }
 
 
-bool CYolo8::init(std::string modelFolder, bool is_cuda)
+bool CYolo8::init(std::string modelFName, bool is_cuda)
 {
 #ifdef USE_CUDA
     m_isCuda = is_cuda;
 #else
     m_isCuda = false;
 #endif 
-    m_modelFolder = modelFolder;
-    m_modelFolder.append("/");
-    m_class_list = load_class_list(m_modelFolder + classesFName);
+
+    std::string classesFName = FILE_UTILS::change_extension(modelFName, "txt");
+
+    //m_modelFolder  = FILE_UTILS::find_path(modelFName);
+    //m_class_list = load_class_list(m_modelFolder + classesFName);// Missing: must switch class list according to the Model name 
+    m_class_list = load_class_list(classesFName); 
+
     if (m_class_list.empty()) {
         std::cout << "Error : Empty class list - ML detection won't work! \n";
         return false;
     }
 
-    return load_net(m_isCuda);
+    return load_net(modelFName, m_isCuda);
     //return load_net_(m_net, m_isCuda);
 }
 
@@ -140,9 +145,6 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
     vector<Mat> detections;
 
     detections = pre_process(frame, m_net);
-
-    if (detections.size() > 0)
-        int debug = 10;
 
     // TEMP CONVERT PARAMS
     cv::Mat input_image = frame;
@@ -219,18 +221,17 @@ void CYolo8::detect(cv::Mat& frame, std::vector<YDetection>& output)
         result.confidence = confidences[idx];
         result.box = boxes[idx];
         output.push_back(result);
-        //if (result.class_id == 0)   std::cout << "DDEBUG DDEBUG : Person x = " << result.box.br() << "detected with confidence " << result.confidence << "\n";
     }
 }
 
 /*-------------------------------------------------------------------------
-* Optimize rect to have at least 640 * 480 size
+* Optimize rect to have at least 640 * 640 (=input size) size
 * Missing : Force this dimension ratio 
 -------------------------------------------------------------------------*/
 cv::Rect CYolo8::optimizeRect(cv::Rect r, cv::Size dim)
 {
 
-    if (dim.width <= 640 && dim.height <= 480) 
+    if (dim.width <= YOLO_INPUT_WIDTH   && dim.height <= YOLO_INPUT_HEIGHT)
         return (cv::Rect(0, 0, dim.width, dim.height));
     else
         return r; 

@@ -105,15 +105,21 @@ API_EXPORT void BauotechAlgoConnector_Release()
 	if (m_initialize == true)
 	{
 		LOGGER::log(DLEVEL::_SYSTEM_INFO, "call to BauotechAlgoConnector_Release()");
+
+		g_loadBalancer.terminate();
+
 		for (int i = 0; i < MAX_VIDEOS; i++) {
 			g_algoProcess[i].terminate();
 			g_algoProcess[i].~CAlgoProcess();
 		}
 		Sleep(1000); // wait for all thread to terminate
 
+
 		DeleteCriticalSection(&gCriticalSection);
 		m_initialize = false;
 		LOGGER::close();
+
+
 	}
 }
 

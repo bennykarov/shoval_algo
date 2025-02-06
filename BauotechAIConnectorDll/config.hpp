@@ -3,7 +3,7 @@
 
 #define MAX_OBJECTS 30 
 
-const bool YOLO_MNGR = false; // YOLO detectors limiter 
+const bool YOLO_MNGR = true; // YOLO detectors limiter 
 
 
 namespace CONSTANTS {

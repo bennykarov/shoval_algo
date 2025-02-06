@@ -93,6 +93,7 @@ private:
 	CSiamTracker      m_tracker;
 	CDecipher m_decipher;
 	std::vector <CAlert> m_camerasInfo;
+	std::vector <int> m_lables_to_detect;
 	int m_cameraID = 0;
 	int m_invertImg = 0;
 	std::vector <Labels> m_detectionTypes; // store all types for detections 

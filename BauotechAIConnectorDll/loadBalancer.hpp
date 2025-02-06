@@ -200,6 +200,8 @@ public:
 class CLoadBalaner  {
 public:
     
+    ~CLoadBalaner();
+    void terminate();
     bool isActive() { return m_active; }
     LB_MODE getMode() { return m_Mode; }
     int init(uint32_t* batchSize, LB_MODE lbMode = LB_MODE::FULL);

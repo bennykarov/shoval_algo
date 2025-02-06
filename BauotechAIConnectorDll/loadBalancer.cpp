@@ -74,7 +74,20 @@ CDashboard m_dashboard;
 
 //#ifdef USE_LOAD_BALANCER
 
+CLoadBalaner::~CLoadBalaner()
+{
+	if (!m_terminate) 		
+		terminate();
+}
 
+void CLoadBalaner::terminate()
+{
+	if (!m_terminate) {
+		m_terminate = true;
+		ST_yoloDetectors::terminate();
+		m_PrioirityTh.join();
+	}
+}
 
 void CLoadBalaner::cameraCounter(int cams)
 { 
@@ -473,8 +486,6 @@ int CLoadBalaner::init(uint32_t *batchSize, LB_MODE loader_Mode)
 
 	m_Mode = loader_Mode;
 
-
-
 	Config params;
 	APIData apiData;
 	params.GPUBatchSize = CONSTANTS::DEFAULT_LOADBALANCER_RESOURCE;
@@ -488,9 +499,6 @@ int CLoadBalaner::init(uint32_t *batchSize, LB_MODE loader_Mode)
 		m_scheme = LB_SCHEME::V0;
 	}
 
-	// YOLO MNGR threads creation - this op is here since LB is the "holistic" thread, see all cameras threads 
-	if (YOLO_MNGR)
-		initYoloMngr(params.GPUBatchSize, params.modelFolder);
 
 	*batchSize = (uint32_t)params.GPUBatchSize;
 
@@ -499,9 +507,17 @@ int CLoadBalaner::init(uint32_t *batchSize, LB_MODE loader_Mode)
 	LOGGER::log(DLEVEL::INFO1, " Load balancer Scheme = " + std::to_string(m_scheme));
 
 
-	m_maxResourceNum = m_resourceNum = ST_yoloDetectors::m_maxDetectors =  params.GPUBatchSize; // Calc number of threads can run on this PC simultaneously  
+	m_maxResourceNum = m_resourceNum = params.GPUBatchSize; ; //= ST_yoloDetectors::m_maxDetectors // Calc number of threads can run on this PC simultaneously  
 	
-	//m_logBatchQueue.set_capacity(30*100*10); // DDEBUG CONST 
+	ST_yoloDetectors::setMaxdetectors(m_maxResourceNum);
+
+	//----------------------------------------------------------------------------------------------------------
+	// YOLO MNGR  is a router for YOLO detectors, it creates YOLO 'GPUBatchSize' detectors and assign them to cameras in real time
+	// 
+	// YOLO MNGR threads creation - this op is here since LB is the "holistic" thread, sees all cameras threads 
+	//----------------------------------------------------------------------------------------------------------
+	if (YOLO_MNGR)
+		initYoloMngr(params.GPUBatchSize, params.modelFolder);
 
 
 	switch (m_Mode) {
@@ -532,8 +548,9 @@ int CLoadBalaner::init(uint32_t *batchSize, LB_MODE loader_Mode)
 
 bool CLoadBalaner::initYoloMngr(int resourceNum, std::string modelFolder)
 {
-	// Create & init yolo "floating" detectors 
 	
+
+	// Create & init yolo "floating" detectors 
 	for (int i = 0; i < resourceNum; i++) {
 		auto yolo2 = ST_yoloDetectors::getInstance(i);
 		if (yolo2 == nullptr || !yolo2->init(modelFolder, true)) {
@@ -1087,26 +1104,6 @@ AQUIRE_ERROR CLoadBalaner::acquire(int camID)
 	}
 #endif
 
-	// DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG DDEBUG PRINT ---------------------------------------------
-	/*
-	if (1)
-	{
-		if (ret == AQUIRE_ERROR::NOT_IN_LIST)
-		{
-			std::string errorStr = "LB ignore cam = " + std::to_string(camID) + "(list:";
-			for (auto cam : m_cameraBatchList)
-				errorStr.append(std::to_string(cam) + ",");
-			errorStr.append(")");
-
-			LOGGER::log(DLEVEL::_SYSTEM_INFO, errorStr);
-		}
-		else if (ret == AQUIRE_ERROR::DUPLICATE_AQUIRED)
-		{
-			std::string errorStr = "LB ignore cam = " + std::to_string(camID) + "-DUPLPICATED";
-			LOGGER::log(DLEVEL::_SYSTEM_INFO, errorStr);
-		}
-	}
-	*/
 	//-----------------------------------------------------------------------------------------------
 
 	return ret;

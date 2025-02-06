@@ -222,7 +222,6 @@ CAlgoProcess::~CAlgoProcess()
 	{
 		CframeBuffer frameBuff;
 		frameBuff.alloc(bufQ->bufferSize());
-		//long frameCount = 0;
 		float elapsedSum = 0;
 		float elapsedMin = 999999;
 		float elapsedMax = 0;
@@ -239,6 +238,11 @@ CAlgoProcess::~CAlgoProcess()
 		while (!m_terminate)
 		{
 			m_event.Wait(); // wait for the next frame to be ready, m_event set() in algoAPI run3()
+
+			if (m_frameNum % 20 == 0)
+				std::cout << "-th2-";
+				//std::cout << ">>>>    th2 loop : FrameNum = " << m_frameNum << "\n";
+
 
 			if (bufQ->IsEmpty()) { 
 				// Flow Error, since wait() should be released only when buffer is full
@@ -266,14 +270,28 @@ CAlgoProcess::~CAlgoProcess()
 			LOGGER::setFrameNum(m_frameNum);
 
 
+			m_timer.sample();
+			cv::Mat frameBGR;
 			try {
-				m_timer.sample();
-				cv::Mat frameBGR = convertPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
+				frameBGR = convertPTR2MAT(frameBuff.ptr, m_height, m_width, m_pixelWidth);
+			}
+			catch (const std::exception& err) {
+				LOGGER::log(DLEVEL::ERROR1, "Exception : convertPTR2MAT() m_videoIndex=" + std::to_string(m_videoIndex) + ":");
+				LOGGER::log(DLEVEL::ERROR1, err.what());
+			}
+			try{
 				m_objectCount = m_tracker.process(frameBGR, m_Objects, frameBuff.frameNum, frameBuff.ts); // All detected objects
+			}
+			catch (const std::exception& err) {
+			LOGGER::log(DLEVEL::ERROR1, "Exception : m_tracker.process() m_videoIndex=" + std::to_string(m_videoIndex) + ":");
+			LOGGER::log(DLEVEL::ERROR1, err.what());
+			}
+				
+			try {
 				m_alertCount = m_tracker.getAlertObjectsCount(); // Alert objects - all exceeds maxAllowed 
 			}
 			catch (const std::exception& err) {
-				LOGGER::log(DLEVEL::ERROR1, "Exception : algProcess main process (convert & m_tracker.process() m_videoIndex=" + std::to_string(m_videoIndex) + ":");
+				LOGGER::log(DLEVEL::ERROR1, "Exception : m_tracker.getAlertObjectsCount()  m_videoIndex=" + std::to_string(m_videoIndex) + ":");
 				LOGGER::log(DLEVEL::ERROR1, err.what());
 			}
 
@@ -304,11 +322,6 @@ CAlgoProcess::~CAlgoProcess()
 			//=======================================================================================================================================
 			// POST PROCESS AREA:
 			//=======================================================================================================================================
-
-			if (0) // DDEBUG PRINT 
-				if (m_objectCount > 0)
-					LOGGER::log(DLEVEL::INFO2, std::string("Cam " + std::to_string(m_videoIndex) + " Detects : " + std::to_string(m_objectCount) + "objects"));
-
 
 			//-------------------------------------------------------------------------
 			// -1- send the data to the server callback (only if object was detected) 
@@ -341,8 +354,7 @@ CAlgoProcess::~CAlgoProcess()
 				info.status = OBJECT_STATUS::DONE;
 				loader->ResQueuePush(info);
 			}
-			 
-			//frameCount++;
+		
 		} // while !terminate
 
 		return m_frameNum > 0;

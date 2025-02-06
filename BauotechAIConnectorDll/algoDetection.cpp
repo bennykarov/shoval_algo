@@ -211,16 +211,22 @@ void CDetector::setCamerasInfo(std::vector <CAlert> camerasInfo)
 
 	m_motionOnly = 0;
 
+	m_lables_to_detect.clear();
+
 	for (auto alert : m_camerasInfo) {
+		m_lables_to_detect.push_back(alert.m_label);
+
 		if (alert.m_motionType == 0)
 			m_motionOnly = 1;
 	}
+
 
 }
 
 bool CDetector::InitGPU()
 {
-	if (!m_yolo.init(m_params.modelFolder,true)) 
+	std::string modelName = m_params.modelFolder + "/" + YOLO_MODEL_NAME;
+	if (!m_yolo.init(modelName ,true))
 	{
 		std::cout << "Cant init YOLO net , quit \n";
 		return false;
@@ -292,7 +298,6 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 	for (auto camInf : m_camerasInfo)
 		m_decipher.set(camInf);
-		//m_decipher.set(camInf.m_polyPoints, camInf.m_label, camInf.m_motionType, camInf.m_maxAllowed, camInf.m_ployID); // (std::vector<cv::Point > polyPoints, int label, int max_allowed)
 	//---------------------------------------------------------------------------------------
 
 
@@ -301,8 +306,10 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		if (m_params.MLType > 0)
 		{
+			std::string modelName = m_params.modelFolder + "/" + YOLO_MODEL_NAME;
+
 			if (!YOLO_MNGR) {
-				if (!m_yolo.init(m_params.modelFolder, m_isCuda)) {
+				if (!m_yolo.init(modelName, m_isCuda)) {
 					LOGGER::log(DLEVEL::ERROR2, "Cant load ML model : " + m_params.modelFolder);
 					return false;
 				}
@@ -379,17 +386,28 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 
 		//--------------------
 		// YOLO detection
+		// 
+		// "YOLO_MNGR" use pre-defined YOLO detectors, yolo2 is a singleton -
+		// that choose one of the predefined detectors 
 		//--------------------
 		m_Yolotput.clear();
 		if (timeForDetection()) { 
 			if (YOLO_MNGR) {
 				auto yolo2 = ST_yoloDetectors::getInstance();
-				if (yolo2 == nullptr) {
+
+				if (yolo2 == nullptr) 
 					LOGGER::log(DLEVEL::ERROR2, std::string("Failed to get YOLO resource , cam = " + std::to_string(m_cameraID)));
-					//Beep(1000, 50);
-				}
 				else {
-					yolo2->detect(frame, m_Yolotput);
+					try {
+						yolo2->detect(frame, m_Yolotput, m_lables_to_detect);
+					}
+					catch (const std::exception& err) {
+						LOGGER::log(DLEVEL::ERROR2, std::string("YOLO DETECTION Exception : " + std::string(__FILE__) + " line:" + std::to_string(__LINE__)));
+						LOGGER::log(DLEVEL::ERROR2, err.what());
+					}
+
+
+					//if (m_Yolotput.size() > 1)    LOGGER::log(DLEVEL::_SYSTEM_INFO, std::string("Objects found = " + std::to_string(m_Yolotput.size())));
 				}
 			}
 			else
@@ -505,46 +523,60 @@ bool CDetector::init(int camIndex, int w, int h, int imgSize, int pixelWidth, in
 		else
 			m_frameOrg = frameRaw;
 
-
-		m_frameROI = m_frameOrg(m_camROI);
+		try {
+			m_frameROI = m_frameOrg(m_camROI);
+		}
+		catch (const std::exception& err) {
+			LOGGER::log(DLEVEL::ERROR1, "Exception : " + std::string(__FILE__)+ " line:" + std::to_string(__LINE__));
+			LOGGER::log(DLEVEL::ERROR1, err.what());
+		}
 
 		if (m_params.scale != 1.)
 			cv::resize(m_frameROI, m_frame, cv::Size(0, 0), m_params.scale, m_params.scale); // performance issues 
 		else
 			m_frame = m_frameROI;
 
-		int objects_tracked = processFrame(m_frame);
-
-		if (m_decipher.getObjects().size() > 0) {
-
-			detectedObjs = m_decipher.getStableObjects(1., &m_frame);
-
-			int alertObjectsNum = m_decipher.getAlertObjectsNum();
-
-			// scale back to original image size:
-			for (auto& obj : detectedObjs) {
-				obj.m_bbox = UTILS::scaleBBox(obj.m_bbox, 1. / m_params.scale);
-				obj.m_bbox.x += m_camROI.x;
-				obj.m_bbox.y += m_camROI.y;
-
-				//obj.m_ts = timeStamp;
-			}
-
-
-			// Note: limit the number of objects to const MAX_OBJECTS!
-			for (int k = 0; k < detectedObjs.size() && k < MAX_OBJECTS; k++)
-				cObject_2_pObject(detectedObjs[k], &pObjects[k]);
-
-			if (1) // DDEBUG SAVE DETECTION  IMAGE 
-				if (detectedObjs.size() > 0)
- 					debugSaveDetectionsImages(detectedObjs);
-
+		try {
+			int objects_tracked = processFrame(m_frame);
+		}
+		catch (const std::exception& err) {
+			LOGGER::log(DLEVEL::ERROR1, "Exception : " + std::string(__FILE__) + " line:" + std::to_string(__LINE__) + err.what());
 		}
 
-		if (0) // When Server will properly send the frameNum \ timestemp
-			m_frameNum = frameNum;
-		else
-			m_frameNum++; // temp - while frameNum for server is missing !!!!!  15-9-24
+
+		try {
+			if (m_decipher.getObjects().size() > 0) {
+
+				detectedObjs = m_decipher.getStableObjects(1., &m_frame);
+
+				int alertObjectsNum = m_decipher.getAlertObjectsNum();
+
+				// scale back to original image size:
+				for (auto& obj : detectedObjs) {
+					obj.m_bbox = UTILS::scaleBBox(obj.m_bbox, 1. / m_params.scale);
+					obj.m_bbox.x += m_camROI.x;
+					obj.m_bbox.y += m_camROI.y;
+
+					//obj.m_ts = timeStamp;
+				}
+
+
+				// Note: limit the number of objects to const MAX_OBJECTS!
+				for (int k = 0; k < detectedObjs.size() && k < MAX_OBJECTS; k++)
+					cObject_2_pObject(detectedObjs[k], &pObjects[k]);
+
+				if (1) // DDEBUG SAVE DETECTION  IMAGE 
+					if (detectedObjs.size() > 0)
+						debugSaveDetectionsImages(detectedObjs);
+
+			}
+		}
+		catch (const std::exception& err) {
+					LOGGER::log(DLEVEL::ERROR1, "Exception END OF FUNCTION : " + std::string(__FILE__) + " line:" + std::to_string(__LINE__) + err.what());
+				}
+		
+		//m_frameNum = frameNum;
+		m_frameNum++; // temp - while frameNum for server is missing !!!!!  15-9-24
 
 
 		m_timeStamp = timeStamp;

@@ -30,12 +30,12 @@ private:
 
 
     // Private constructor
-    ST_yoloDetectors(int id) : id(id) {
+    ST_yoloDetectors(int id) : m_id(id) {
         std::cout << "ST_yoloDetectors instance with ID: " << id << " created!" << std::endl;
     }
 
-    int id;  // Unique identifier for each instance
-    CYolo8 m_yolo; // Unique YOLO Detector for each instance
+    int m_id;  // Unique identifier for each instance
+    std::vector <CYolo8> m_yolos; // Unique YOLO Detector for each instance
 
 public:
     static int m_maxDetectors;
@@ -61,7 +61,7 @@ public:
 
         int freeID = freeDetectors.findFree();
 
-        if (instances.find(freeID) == instances.end()) 
+        if (freeID < 0 || instances.find(freeID) == instances.end())
              return nullptr;
 
         return instances[freeID];
@@ -89,24 +89,27 @@ public:
         return instances[id];
     }
 
+    static void terminate()
+    {
+        instances.clear();
+        m_maxDetectors = 0;
+    }
+
     // Singleton level
     //------------------
-    bool init(std::string modelFolder, bool is_cuda = true)
-    {
-        return m_yolo.init(modelFolder, is_cuda);
-        //m_yolos[id].init(modelFolder, is_cuda);
-    }
+    bool init(std::string modelFName, bool is_cuda = true);
 
     void showMessage(std::string msg) const
     {
-        std::cout << msg << "ST detector# " << id << std::endl;
+        std::cout << msg << "ST detector# " << m_id << std::endl;
     }
 
-    void detect(cv::Mat& frame, std::vector<YDetection>& output); // instence detect   
+    void detect(cv::Mat& frame, std::vector<YDetection>& output, std::vector <int> lables_to_detect = std::vector <int>()); // instence detect   
 
 
 
     cv::Rect optimizeRect(cv::Rect r, cv::Size dim);
+
 
 
 

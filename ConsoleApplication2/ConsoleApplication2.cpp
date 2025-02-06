@@ -695,7 +695,7 @@ int main_SHOVAL(int argc, char* argv[])
 	int skipEveryframes = 0;
 	while (!frame.empty()) {
 
-		if (ASYNC) Sleep(1); // DDEBUG DDEBUG simulate  RT cameras
+		if (ASYNC) Sleep(30); // DDEBUG DDEBUG simulate  RT cameras
  
 		cv::Mat post_frame;
 		if (invertImg == 1)
@@ -709,6 +709,15 @@ int main_SHOVAL(int argc, char* argv[])
 		// Cameras LOOP : Launch Algo process for all cameras :
 		//--------------------------------------------------------
 		updateVideoList(); // update cam list as callback sets
+		if (0) // DDEBUG PRINT CAM LIST
+		{
+			std::cout << "camera list:";
+			for (auto cam : gVideosToRun)
+				std::cout << cam << "-";
+			std::cout << "\n";
+		}
+
+		
 		for (int _videoIndex : gVideosToRun) {
 
 			memcpy(pData[_videoIndex], post_frame.data, image_size);
@@ -773,12 +782,15 @@ int main_SHOVAL(int argc, char* argv[])
 		}
 
 
-		
-		if (DrawDetections == 2)
-			key = disp.draw(height, width, (char*)pData[videoTodisplayInd], AIObjectVec, g_cameraInfos, frameNum, invertImg);
-		else if (DrawDetections == 1)
-			key = disp.draw(height, width, (char*)pData[videoTodisplayInd], std::vector <ALGO_DETECTION_OBJECT_DATA>(), g_cameraInfos, frameNum, invertImg);
-
+		try {
+			if (DrawDetections == 2)
+				key = disp.draw(height, width, (char*)pData[videoTodisplayInd], AIObjectVec, g_cameraInfos, frameNum, invertImg);
+			else if (DrawDetections == 1)
+				key = disp.draw(height, width, (char*)pData[videoTodisplayInd], std::vector <ALGO_DETECTION_OBJECT_DATA>(), g_cameraInfos, frameNum, invertImg);
+		}
+		catch (const std::exception& err) {
+			std::cout << "Error in drawing frame : " << err.what() << "\n";
+		}
 
 		//------------------
 		// Loop control :

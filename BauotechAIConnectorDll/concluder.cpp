@@ -413,14 +413,10 @@ int CDecipher::consolidate(int mode, std::vector <cv::Rect>  BGSEGoutput)
 			CObject newDetected = obj.back();
 			newDetected.m_ts = getObjAge_sec(obj); // here obj timestamp = age in ms
 			
-			std::cout << "(cam " << m_camID <<  ") obj age = " << newDetected.m_ts << " sec" << std::endl; // DDEBUG DDEBUG PRINT 
+			//std::cout << "(cam " << m_camID <<  ") obj age = " << newDetected.m_ts << " sec" << std::endl; // DDEBUG DDEBUG PRINT 
 
 			newDetected.m_confidence = stableConfidence(obj); // calc mean confidence of the last few frames 
 			m_detectedObjects.push_back(newDetected);
-			/*
-			m_detectedObjects.push_back(newDetected);
-			m_detectedObjects.back().m_confidence = stableConfidence(obj); // calc mean confidence of the last few frames 
-			*/
 		}
 	}
 
@@ -790,17 +786,20 @@ std::vector <CObject> CDecipher::getStableObjects(float scale, cv::Mat *frameImg
 
 	std::vector <CObject> scaledDetectedObjects, detectedObjects;
 
-	for (auto obj : m_detectedObjects) {
-		int maxHiddenFrame = obj.isMoving() ? MAX_MOVING_SIREN_HIDDEN_FRAMES : MAX_STATIC_SIREN_HIDDEN_FRAMES;
+	if (m_detectedObjects.size() > 50) // DDEBUG 
+		int debug = 10;
+	else 
+		for (auto obj : m_detectedObjects) {
+			int maxHiddenFrame = obj.isMoving() ? MAX_MOVING_SIREN_HIDDEN_FRAMES : MAX_STATIC_SIREN_HIDDEN_FRAMES;
 
-		// filter 1: by confidence and hidden frames
-		//-------------------------------------------
-		if (obj.m_confidence >= GET_MIN_YOLO_CONFIDENCE(obj) && getHiddenLen(obj) <= maxHiddenFrame) { // Allow only fresh detected objects
-			scaledDetectedObjects.push_back(obj);
-			// Scale back to origin dimensions is required
-			scaledDetectedObjects.back().m_bbox = UTILS::scaleBBox(obj.m_bbox, scale);
+			// filter 1: by confidence and hidden frames
+			//-------------------------------------------
+			if (obj.m_confidence >= GET_MIN_YOLO_CONFIDENCE(obj) && getHiddenLen(obj) <= maxHiddenFrame) { // Allow only fresh detected objects
+				scaledDetectedObjects.push_back(obj);
+				// Scale back to origin dimensions is required
+				scaledDetectedObjects.back().m_bbox = UTILS::scaleBBox(obj.m_bbox, scale);
+			}
 		}
-	}
 
 	for (auto alert : m_alerts) {
 		std::vector <CObject> detectionSinglePloy =  alert.selectObjects(scaledDetectedObjects);		
